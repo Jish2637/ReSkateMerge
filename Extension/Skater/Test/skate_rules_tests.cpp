@@ -1,5 +1,6 @@
 #include "Extension/Skater/skate_detector.h"
 #include "Extension/Throwdowns/throwdown_wire.h"
+#include "Extension/Skater/trick_terminology_rule.h"
 #include <iostream>
 #include <cstring>
 #include <fstream>
@@ -47,6 +48,22 @@ int main(int argc,char** argv)try {
     auto live_flip=catalog.annotate(row("Kickflip","Kickflip"));
     check(!normalize(result({live_flip}),{0xfe,true}).signature.error.empty(),"Disabled-only flip created a result");
     check(normalize(result({live_flip}),all).signature.tokens==normalize(result({flip}),all).signature.tokens,"Localized and identifier rows mismatch");
+    {
+        // Terminology may replace any label, including blanking combo members.
+        // The detector must normalize the retained native identity throughout.
+        trick_terminology::TextEdit edit;
+        edit.applied("Kickflip","Custom flip");
+        const auto expected=normalize(result({live_flip}),all).signature.tokens;
+        for (const auto* alias : {"Custom flip", ""}) {
+            edit.applied("Kickflip",alias);
+            const auto native=catalog.annotate(row(edit.observe(alias).c_str(),"Kickflip"));
+            check(normalize(result({native}),all).signature.tokens==expected,"Terminology alias changed native match signature");
+        }
+        edit.incoming("Heelflip","");
+        edit.applied("Heelflip","New alias");
+        edit.publication_finished("New alias");
+        check(edit.observe("New alias")=="Heelflip","Native revision was lost after terminology publication");
+    }
     auto ambiguity=catalog;ambiguity.add("ID_TRICK_HEELFLIP","Kickflip");
     check(ambiguity.resolve("Kickflip").empty(),"Ambiguous localized name guessed an identity");
     check(!normalize(result({ambiguity.annotate(row("Kickflip","Kickflip"))}),all).signature.error.empty(),"Ambiguous identity passed matching");

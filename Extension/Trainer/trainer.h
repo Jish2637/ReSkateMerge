@@ -76,7 +76,8 @@ struct View {
     float offboard_height{1}; // a jump on foot
     float flip_speed{1};      // board flip tricks: x of the game's own speed
     // HUD
-    bool hud{}, hud_jump{}, logging{};
+    bool hud{}, hud_jump{}, logging{}, terminology{};
+    std::string terminology_status;
     // The loaded map and what its author ships for the trainer (Mods/<mod>/trainer.json).
     std::string map, map_note, map_preset, profile_preset;
     std::vector<Spot> spots;

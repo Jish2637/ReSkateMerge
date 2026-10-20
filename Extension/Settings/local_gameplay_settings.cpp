@@ -4,6 +4,7 @@
 #include "local_gameplay_settings.h"
 #include "Extension/Skater/trick_logger.h"
 #include "Extension/Skater/skate_detector.h"
+#include "Extension/Skater/trick_terminology.h"
 #include "local_user_settings.h"
 #include <optional>
 #include <string_view>
@@ -103,9 +104,15 @@ bool gameplay_get_bool(std::uintptr_t m, const void* a) {
     const bool value = saved ? *saved : gameplay_settings().get_bool(m, a);
     // Remember natural footing even before a match starts. The logger itself
     // gates diagnostics; cached setting reads here still return the original value.
-    try {PreserveError preserve;std::string key;if(gameplay_setting_key(a,key) &&
-        (key=="DefaultStanceIsGoofy" || trick_logger::full_capture() || skate::active()))
-        trick_logger::gameplay_bool(key,value,"effective_getter");}catch(...){}
+    try {
+        PreserveError preserve;
+        std::string key;
+        if (gameplay_setting_key(a, key)) {
+            if (key == "DefaultStanceIsGoofy") trick_terminology::observe_footing(value);
+            if (key == "DefaultStanceIsGoofy" || trick_logger::full_capture() || skate::active())
+                trick_logger::gameplay_bool(key, value, "effective_getter");
+        }
+    } catch (...) {}
     return value;
 }
 

@@ -1,4 +1,5 @@
 #include "overlay_internal.h"
+#include "Extension/Skater/completed_ui.h"
 
 // Text the game draws through its debug text natives, which retail reduced to stubs
 // (the S.K.A.T.E. throwdown's whole HUD is drawn that way). The game side hands over
@@ -39,7 +40,10 @@ void draw_game_text() {
     auto* font = s.menu.bold ? s.menu.bold : ImGui::GetFont();
     auto* draw = ImGui::GetBackgroundDrawList();
     const float sx = display.x / text.width, sy = display.y / text.height;
-    for (const auto& line : text.lines) {
+    for (const auto& native : text.lines) {
+        auto line=native;
+        // Native S.K.A.T.E. trick colour only; never replace player rows/prompts.
+        if (line.color==0xffe5ffff)line.text=trick_terminology::editor::local_completed_name(line.text);
         if (line.text.empty()) continue;
         const float size = std::clamp(12.0f * line.scale * sy, 8.0f, 96.0f);
         ImVec2 at(line.x * sx, line.y * sy);

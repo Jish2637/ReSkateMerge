@@ -9,6 +9,7 @@
 #include "Extension/Multiplayer/Hud/native_party.h"
 #include "Extension/Throwdowns/native_throwdowns.h"
 #include <algorithm>
+#include "Extension/Skater/trick_terminology.h"
 
 namespace dingosdk::profile_runtime {
 // EntitlementTrigger's two retail graphs compute:
@@ -41,11 +42,14 @@ void execute_expression_hook(std::uintptr_t vm, std::uint32_t pc) {
     if(!skate::prepare_native_filter(vm))return;
     trick_logger::scoring_expression(vm, pc, false);
     ExpressionExecutionScope scope(vm);
+    void* const binding_probe=trick_terminology::begin_label_binding_probe(vm,pc,false);
     initialize_starter_from_expression(vm, pc);
     multiplayer::execute_native_party_expression(vm, pc, 0,
         [](std::uintptr_t expression, std::uint32_t cursor, std::uintptr_t) {
             local_runtime().execute_expression(expression, cursor);
         });
+    trick_terminology::end_label_binding_probe(binding_probe);
+    trick_terminology::observe_scoring_expression(vm,pc);
     deliver_local_challenge_completion(vm, pc);
     multiplayer::complete_native_throwdown_parameters(vm);
     trick_logger::scoring_expression(vm, pc, true);
@@ -57,8 +61,11 @@ void execute_profiled_expression_hook(std::uintptr_t vm, std::uint32_t pc, std::
     if(!skate::prepare_native_filter(vm))return;
     trick_logger::scoring_expression(vm, pc, false);
     ExpressionExecutionScope scope(vm);
+    void* const binding_probe=trick_terminology::begin_label_binding_probe(vm,pc,true);
     initialize_starter_from_expression(vm, pc);
     multiplayer::execute_native_party_expression(vm, pc, profiler, local_runtime().execute_profiled_expression);
+    trick_terminology::end_label_binding_probe(binding_probe);
+    trick_terminology::observe_scoring_expression(vm,pc);
     deliver_local_challenge_completion(vm, pc);
     multiplayer::complete_native_throwdown_parameters(vm);
     trick_logger::scoring_expression(vm, pc, true);

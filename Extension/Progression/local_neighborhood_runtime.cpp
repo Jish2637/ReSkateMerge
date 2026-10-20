@@ -1,3 +1,4 @@
+#include "Extension/Skater/trick_terminology.h"
 #include "Engine/Core/Log/logging.h"
 #include "Extension/Profile/runtime_internal.h"
 #include "local_neighborhood_runtime.h"
@@ -145,6 +146,7 @@ bool publish_neighborhood_hook(std::uintptr_t manager, std::uint64_t context,
     // Native synchronous assignment copies strings, arrays and references. The
     // borrowed input is neither retained nor destroyed by this adapter. Keep
     // native exceptions and LastError behavior outside the local catch block.
+    trick_terminology::observe_native_publication(manager,context,type);
     return game::native_data().models.publish(manager, context, type, replace ? &record : source);
 }
 

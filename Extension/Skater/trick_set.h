@@ -122,6 +122,7 @@ public:
         return false;
     }
     std::uint64_t active_id() const {return active_?set_.id:0;}
+    const TrickSetResult& evidence() const {return set_;}
     std::uint64_t capture_id() const {return set_.id;}
     std::uint64_t started_at() const {return active_?set_.start:0;}
     double grounded_travel() const {return grounded_travel_;}

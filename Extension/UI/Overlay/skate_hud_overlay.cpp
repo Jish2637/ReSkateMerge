@@ -1,4 +1,5 @@
 #include "overlay_internal.h"
+#include "Extension/Skater/completed_ui.h"
 #include "Extension/UI/skate_theme.h"
 #include <cmath>
 #include <map>
@@ -262,8 +263,12 @@ void draw_skate_hud() {
         h.headline_at = Clock::now();
     }
     const float shown = ease_out(seconds_since(h.headline_at) / 0.2f);
-    draw_messages(draw, h.hud, scale, shown, (1.0f - shown) * -12.0f * scale);
+    auto presentation=h.hud;
+    for(auto& message:presentation.messages)if(message.kind==SkateHudMessage::Kind::trick)
+        message.text=trick_terminology::editor::local_completed_name(message.text);
+    for(auto& trick:presentation.done_tricks)trick=trick_terminology::editor::local_completed_name(trick);
+    draw_messages(draw, presentation, scale, shown, (1.0f - shown) * -12.0f * scale);
     const auto [bottom, width] = draw_scoreboard(draw, h, scale);
-    draw_done_tricks(draw, h.hud, scale, bottom, width);
+    draw_done_tricks(draw, presentation, scale, bottom, width);
 }
 } // namespace dingosdk::overlay::detail

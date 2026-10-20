@@ -2,6 +2,7 @@
 #include "trick_name_text.h"
 #include "trick_identity.h"
 #include "trick_logger.h"
+#include "trick_terminology.h"
 #include "skate_detector.h"
 #include "no_bail.h"
 #include "Engine/Core/Hooks/hooks.h"
@@ -89,7 +90,8 @@ Label label(const Context& context, Value row, std::uint32_t field) {
     const auto wrapper = context.field(row, field);
     require(schema(wrapper.type) == layout::label_schema && size(wrapper.type) == 104, "Native trick label schema differs");
     Label result;
-    result.raw = context.text(context.field(wrapper, layout::label_text), 1024);
+    result.raw = trick_terminology::native_label(context.manager, row.handle, row.type, field,
+        context.text(context.field(wrapper, layout::label_text), 1024));
     result.text = localized(context.base, result.raw, result.resolved);
     return result;
 }
@@ -194,6 +196,7 @@ void tick(std::uintptr_t base, bool world_ready) noexcept {
         }
         for (auto it = s.rows.begin(); it != s.rows.end();) {
             auto& row = it->second;
+            if (trick_terminology::presentation_row(manager,it->first)) {it=s.rows.erase(it);continue;}
             try {
                 const auto type = context.type_of(it->first);
                 if (!type || schema(type) != layout::row_schema) { emit(row); it = s.rows.erase(it); continue; }

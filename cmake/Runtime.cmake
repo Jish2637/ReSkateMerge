@@ -174,6 +174,8 @@ add_library(dingosdk_runtime SHARED
     Extension/BoardBreak/board_break.cpp
     Extension/BoardBreak/board_break_commands.cpp
     Extension/BoardBreak/board_break_audio.cpp
+    Extension/Skater/trick_editor.cpp
+    Extension/Skater/trick_terminology.cpp
     Extension/Trainer/trainer.cpp
     Extension/Trainer/trainer_presets.cpp
     Extension/Trainer/trainer_jump.cpp

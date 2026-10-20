@@ -1,4 +1,5 @@
 #include "trainer_page.h"
+#include "Extension/Skater/trick_editor_page.h"
 #include "trainer.h"
 #include "Extension/UI/Overlay/skate_menu_internal.h"
 #include "Extension/UI/skate_theme.h"
@@ -619,7 +620,11 @@ void jump_lines(SkateMenu &menu, const trainer::Jump &jump) {
 void map_tab(SkateMenu &menu, const CallbacksV3 &callbacks, const trainer::View &view) {
     const auto telemetry = trainer::telemetry();
     begin_card(menu, "hud", "HUD");
-    bool hud = view.hud, jump = view.hud_jump, logging = view.logging;
+    bool hud = view.hud, jump = view.hud_jump, logging = view.logging, terminology = view.terminology;
+    if (toggle_row(menu, "Skate trick terminology", "Apply the active trick editor rules to the native trick ticker.", terminology))
+        trainer_command(menu, callbacks, std::format("option terminology {}", terminology ? 1 : 0));
+    if (terminology) note(view.terminology_status.c_str());
+    terminology_editor_button(menu, callbacks);
     if (toggle_row(menu, "Speed and air HUD", "Speed, air time and height in the corner while you skate.", hud))
         trainer_command(menu, callbacks, std::format("option hud {}", hud ? 1 : 0));
     if (toggle_row(menu, "Jump read-out", "After each landing: takeoff speed and angle, height, distance, landing speed.", jump))
@@ -629,6 +634,7 @@ void map_tab(SkateMenu &menu, const CallbacksV3 &callbacks, const trainer::View 
         trainer_command(menu, callbacks, std::format("option log {}", logging ? 1 : 0));
     end_card();
 
+    if (terminology_editor_open()) { terminology_editor_page(menu, callbacks); return; }
     begin_card(menu, "now", "RIGHT NOW");
     if (!telemetry.skater) {
         note("No skater yet.");

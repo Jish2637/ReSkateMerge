@@ -1,4 +1,6 @@
 #include "trainer.h"
+#include "Extension/Skater/trick_editor.h"
+#include "Extension/Skater/trick_terminology.h"
 #include "trainer_classes.h"
 #include "trainer_jump.h"
 #include "trainer_presets.h"
@@ -118,7 +120,8 @@ struct State {
     std::string map;
     MapFile map_file;
     int slot{};
-    bool auto_return{}, pad_shortcuts{}, hud{}, hud_jump{}, logging{};
+    bool auto_return{}, pad_shortcuts{}, hud{}, hud_jump{}, logging{}, terminology{};
+    std::string terminology_status;
     // The hippy jump's height is set by the game's trick scripts, not by tuning: the trainer
     // scales the upward velocity when it sees one start.
     float hippy_height{1};
@@ -234,6 +237,7 @@ void load_store() {
             s.pad_shortcuts = o.value("pad_shortcuts", false);
             s.hud = o.value("hud", false);
             s.hud_jump = o.value("hud_jump", false);
+            s.terminology = o.value("terminology", false);
             s.return_delay = std::clamp(o.value("return_delay", 1.5f), 0.0f, 10.0f);
             s.hippy_height = std::clamp(o.value("hippy_height", 1.0f), height_low, height_high);
             s.nocomply_height = std::clamp(o.value("nocomply_height", 1.0f), height_low, height_high);
@@ -290,6 +294,7 @@ void save_store() {
         options["pad_shortcuts"] = s.pad_shortcuts;
         options["hud"] = s.hud;
         options["hud_jump"] = s.hud_jump;
+        options["terminology"] = s.terminology;
         options["return_delay"] = s.return_delay;
         options["hippy_height"] = s.hippy_height;
         options["nocomply_height"] = s.nocomply_height;
@@ -1486,6 +1491,8 @@ void build_view() {
     next->pad_shortcuts = s.pad_shortcuts;
     next->hud = s.hud;
     next->hud_jump = s.hud_jump;
+    next->terminology = s.terminology;
+    next->terminology_status = s.terminology_status;
     next->logging = s.logging;
     next->map = s.map;
     next->map_note = s.map_file.note;
@@ -1550,6 +1557,12 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool playing, const std::s
             s.motion.valid = false;
             s.entity = 0;
         }
+        trick_terminology::observe_position(s.entity,s.telemetry.position,playing && s.telemetry.skater);
+        const auto terminology_status = trick_terminology::tick(base, playing, s.terminology);
+        if (terminology_status != s.terminology_status) {
+            s.terminology_status = terminology_status;
+            s.view_due = true;
+        }
         (void)start_trick_heights(base);
         if (take_class_list_shown()) s.class_list_wanted = true;
         // The search reads all of the game's writable memory, so it runs only for a player with
@@ -1593,6 +1606,7 @@ namespace {
 std::string run(std::string_view verb, const std::vector<std::string> &a) {
     auto &s = state();
     const auto v = lower(verb);
+    if (v == "terminology") return trick_terminology::editor::command(a);
     const auto arg = [&](std::size_t i) { return i < a.size() ? a[i] : std::string{}; };
     if (v == "status") {
         std::size_t touched{}, frozen{};
@@ -1783,9 +1797,10 @@ std::string run(std::string_view verb, const std::vector<std::string> &a) {
             if (!value) return "error: return_delay needs seconds.";
             s.return_delay = std::clamp(static_cast<float>(*value), 0.0f, 10.0f);
         } else if (!flag(arg(1), on)) {
-            return "error: usage: trainer option hud|hud_jump|auto_return|pad|log 0|1";
+            return "error: usage: trainer option hud|hud_jump|terminology|auto_return|pad|log 0|1";
         } else if (name == "hud") s.hud = on;
         else if (name == "hud_jump") s.hud_jump = on;
+        else if (name == "terminology") s.terminology = on;
         else if (name == "auto_return") s.auto_return = on;
         else if (name == "pad") s.pad_shortcuts = on;
         else if (name == "log") {

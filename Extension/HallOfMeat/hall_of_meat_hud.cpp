@@ -1,4 +1,6 @@
 #include "hall_of_meat_hud.h"
+#include "Extension/Skater/trick_terminology.h"
+#include <intrin.h>
 #include "Engine/Core/Hooks/hooks.h"
 #include "Engine/Core/Log/logging.h"
 #include "Engine/Core/Platform/memory.h"
@@ -24,6 +26,7 @@ using Address = std::uintptr_t;
 using Clock = std::chrono::steady_clock;
 using Value = std::uint64_t; // a field's value bytes, as the model's write takes them
 using ModelWrite = std::uint64_t (*)(Address manager, std::uint64_t handle, Address type, const void* value, std::uint8_t flag);
+static_assert(std::is_same_v<ModelWrite,trick_terminology::NativeModelWriter>);
 
 // Our stack item: counted beside the d-pad (above its priority, within what the stack counts).
 constexpr std::uint32_t cover_key = 0x52534843; // "RSHC": apart from the game's own keys (0x8000....)
@@ -52,6 +55,8 @@ struct Hook {
     std::atomic<ModelWrite> original{};
     void* target{};
     bool ready{};  // prepared
+    bool hall_requested{};
+    std::atomic<bool> terminology_requested{};
     std::atomic<bool> hooked{}; // and enabled (hook_hud)
     std::array<Taken, score_switches.size()> fields;
 };
@@ -74,7 +79,11 @@ std::uint64_t model_write(Address manager, std::uint64_t handle, Address type, c
             break;
         }
     }
-    return h.original.load(std::memory_order_acquire)(manager, handle, type, value, flag);
+    const auto original=h.original.load(std::memory_order_acquire);
+    if(h.terminology_requested.load(std::memory_order_acquire))
+        return trick_terminology::publish_native_model(manager,handle,type,value,flag,
+            reinterpret_cast<Address>(_ReturnAddress()),original);
+    return original(manager,handle,type,value,flag);
 }
 
 bool start_model_write_hook(Address base) noexcept {
@@ -273,8 +282,10 @@ void start_hud(std::uintptr_t base) noexcept {
     (void)start_model_write_hook(base); // without it the d-pad still hides
 }
 
-bool hook_hud(bool on) noexcept {
+namespace {
+bool update_model_write_hook() noexcept {
     auto& h = hook();
+    const bool on=h.hall_requested || h.terminology_requested.load(std::memory_order_acquire);
     if (!h.ready) return !on; // nothing to hook
     if (h.hooked.load(std::memory_order_acquire) == on) return true;
     const auto status = on ? hook_enable(h.target) : hook_disable(h.target);
@@ -285,6 +296,16 @@ bool hook_hud(bool on) noexcept {
     }
     h.hooked.store(on, std::memory_order_release);
     return true;
+}
+
+} // namespace
+bool hook_hud(bool on) noexcept {
+    hook().hall_requested=on;
+    return update_model_write_hook();
+}
+bool share_model_write(bool on) noexcept {
+    auto& h=hook();h.terminology_requested.store(on,std::memory_order_release);
+    return update_model_write_hook();
 }
 
 bool hide_hud(bool hidden) noexcept {

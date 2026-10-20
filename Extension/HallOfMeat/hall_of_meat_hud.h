@@ -15,9 +15,11 @@ namespace dingosdk::hall_of_meat {
 // Startup, with the game's image base: prepares the model write hook, which patches nothing; without
 // it the score HUD stays as it is.
 void start_hud(std::uintptr_t base) noexcept;
-// Client thread: the model write hook on while Hall of Meat is, off otherwise, so the game's UI writes
-// never pass through it while it is switched off. False when it could not be changed (logged).
+// Client thread: request the shared hook for Hall of Meat. Terminology may also
+// keep it enabled; Hall of Meat takes no fields unless its own HUD is hidden.
 bool hook_hud(bool on) noexcept;
+// Client thread: share the existing publisher detour, retaining Hall of Meat demand.
+bool share_model_write(bool on) noexcept;
 // Client thread, every tick: hides the corner while `hidden`, and gives the game's own back after.
 // True once nothing of ours is left in it.
 bool hide_hud(bool hidden) noexcept;

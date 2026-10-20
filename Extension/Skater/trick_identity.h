@@ -39,6 +39,11 @@ public:
         }
         return selected;
     }
+    bool ambiguous(std::string_view observed,bool on_board=false) const {
+        const auto it=labels_.find(plain_text(observed));if(it==labels_.end())return false;
+        unsigned count{};for(const auto& id:it->second)if(!on_board || riding_identity(id))++count;
+        return count>1;
+    }
     Json annotate(Json row,bool on_board=false) const {
         if(!row.contains("raw_labels"))return row;
         auto labels=row.at("raw_labels");
