@@ -88,14 +88,14 @@ BOOLEAN __stdcall captured_hid_attributes(HANDLE file, PHIDD_ATTRIBUTES attribut
         result = original<decltype(&HidD_GetAttributes)>(input_hooks().hid_attributes)(file, attributes);
     }
     const auto error = GetLastError();
-    if (result && attributes) {
+    if (result && attributes) observe_hid_metadata([&] {
         const auto kind = playstation_pad(attributes->VendorID, attributes->ProductID);
         if (kind != PlayStationPad::none) {
             const auto device = describe_hid(file, kind);
             std::lock_guard lock(input_hooks().hid_mutex);
             input_hooks().hid_devices[file] = device;
         }
-    }
+    });
     SetLastError(error);
     return result;
 }

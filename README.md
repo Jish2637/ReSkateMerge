@@ -6,7 +6,7 @@ in the private [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerg
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.0-merged.2-Windows-x64.zip` from this repository's
+1. Download `ReSkateMerge-v0.1.0-merged.3-Windows-x64.zip` from this repository's
    private release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
@@ -25,9 +25,11 @@ Detection and multiplayer matching retain native trick identities even when
 terminology changes their displayed names. The bundled recommended first-person
 preset is under `scripts/Custom/FirstPersonNative/presets/bundled/`.
 
-`v0.1.0-merged.2` fixes USB PS5 input capture when the game reads multiple reports
+`v0.1.0-merged.3` fixes USB PS5 input capture when the game reads multiple reports
 at once: opening Insert or chat must neutralize each report without generating
-a D-pad press. See [controller fix](contrib/merge/CONTROLLER_FIX.md).
+a D-pad press. It also prevents Steam's HID descriptor wrapper from recursively
+re-entering metadata discovery, which caused a startup stack overflow in merged.2.
+See [controller fix](contrib/merge/CONTROLLER_FIX.md).
 
 ## Build and verify
 

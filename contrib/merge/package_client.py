@@ -31,7 +31,7 @@ def main():
     if int(tests.attrib.get('tests', '0')) < 15:
         raise SystemExit('Expected detection, terminology and first-person regression suites.')
     names = {case.attrib['name'] for case in tests.iter('testcase')}
-    required = {'trick_terminology', 'skate_rules', 'trick_logger', 'first_person_camera_host', 'playstation_report'}
+    required = {'trick_terminology', 'skate_rules', 'trick_logger', 'first_person_camera_host', 'playstation_report', 'hid_metadata_reentrancy'}
     if not required.issubset(names):
         raise SystemExit('Missing required feature regressions: '+str(required-names))
     for case in tests.iter('testcase'):

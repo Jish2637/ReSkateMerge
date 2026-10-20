@@ -1,4 +1,26 @@
-# USB PS5 marker input on Insert/chat — merged.2
+# USB PS5 marker input and Steam HID startup recursion — merged.3
+
+## Startup follow-up in merged.3
+
+The merged.2 crash dump reported `0xc00000fd` (stack overflow). Matching PDB
+symbols resolved repeated stack addresses to `describe_hid+0x8f` and
+`captured_hid_attributes+0xd9`, interleaved with Steam's
+`gameoverlayrenderer64.dll+0xc4e9b`. Steam's descriptor wrapper calls the
+attributes hook again. The previous bypass prevented ReadFile capture but did
+not prevent this attributes observer from starting another descriptor query.
+
+Metadata observation now uses the existing scoped input bypass as a re-entry
+gate. Reentrant attributes calls still execute the original API and retain its
+result; they skip metadata discovery. The guard is exception-safe and also
+leaves the independent overlay reader outside gameplay capture. The new
+`hid_metadata_reentrancy` regression exercises that exact callback cycle and
+checks one metadata query, two original calls and restoration after errors.
+
+This fixes a startup regression introduced by merged.2. The per-report USB batch
+fix below remains in place. Live startup and controller retesting are still
+required; automated byte tests alone did not cover the Steam callback cycle.
+
+## Original batch diagnosis and fix
 
 The affected installation's log identified Sony product `0df2` (DualSense Edge)
 with USB input report length 64. At the Insert-menu input-ownership transition,

@@ -1,11 +1,11 @@
-# ReSkateMerge v0.1.0-merged.2 validation
+# ReSkateMerge v0.1.0-merged.3 validation
 
 Built on Windows x64 with Visual Studio 2026, MSVC 19.51.36247, Windows SDK
 10.0.26100.0 and CMake 4.3.1. Release build with the `vs2026-x64` /
 `merged-release` presets succeeded. Launcher automatic binary updates are
 compiled off; the multiplayer protocol remains 52.
 
-CTest: **103 passed, 0 failed, 1 skipped**, out of 104 selected tests. The
+CTest: **104 passed, 0 failed, 1 skipped**, out of 105 selected tests. The
 installed-game-only `trainer_tuning_names` check skips because
 `DINGOSDK_TEST_GAME_ROOT` is unset. Set that CMake cache path to a supported game
 installation to run it; invalid explicitly configured game data remains a failure.
@@ -13,6 +13,9 @@ Other tests that optionally read game assets exercised their synthetic fixtures.
 
 Coverage includes:
 
+- A fake Steam HID descriptor callback re-enters the attributes observer: both
+  original attributes calls execute, only one descriptor query runs, the
+  independent reader stays bypassed and exception unwinding restores the gate.
 - USB DualSense/Edge batched reads (including the reported 192 bytes / three
   64-byte reports into a 2048-byte buffer), neutral D-pad/buttons/triggers,
   USB and Bluetooth layouts, counters, CRC updates, guard bytes, malformed

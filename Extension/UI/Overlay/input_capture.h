@@ -7,6 +7,14 @@ struct OverlayInputAccess {
     OverlayInputAccess() { ++overlay_input_access; }
     ~OverlayInputAccess() { --overlay_input_access; }
 };
+// Steam's HID wrappers may call HidD_GetAttributes during a descriptor query.
+// The original call must still run, but its metadata observer must not recurse.
+template<class Query>
+void observe_hid_metadata(Query&& query) {
+    if (overlay_input_access) return;
+    OverlayInputAccess access;
+    query();
+}
 // The WM_INPUT packet the window procedure has already noted (note_raw_mouse_packet)
 // while that message is handled on this thread; the game reading the same packet
 // through GetRawInputData is then not noted a second time.
