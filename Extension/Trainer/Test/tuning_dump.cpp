@@ -10,6 +10,10 @@ int main(int argc, char **argv) {
         std::cerr << "usage: dingosdk_trainer_tuning_dump <Skate folder>\n";
         return 2;
     }
+    if (!argv[1][0]) {
+        std::cout << "Skipped: set DINGOSDK_TEST_GAME_ROOT to validate installed game tuning names.\n";
+        return 77;
+    }
     try {
         const auto model = dingosdk::physics_tuning::read_game_tuning(argv[1]);
         std::size_t unnamed{};

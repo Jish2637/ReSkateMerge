@@ -335,8 +335,8 @@ int main() {
     std::array<std::string,13> tre_fs180{"Flip","","180","","360"};
     const auto base_only=flip_alias(tre_fs180,"FS");
     check(base_only.name=="Tre Flip" && display_field(base_only,2,"180")=="180");
-    const auto combo=flip_alias(tre_fs180,"BS");
-    check(combo.name=="Bigflip" && display_field(combo,2,"180").empty());
+    const auto bigflip_alias=flip_alias(tre_fs180,"BS");
+    check(bigflip_alias.name=="Bigflip" && display_field(bigflip_alias,2,"180").empty());
     check(stance_of("Switch","Nollie") == Stance::unknown);
     SpinTracker spins;
     spins.sample(100,1,100,170,true,false);
@@ -760,4 +760,3 @@ int main() {
     }
     std::cout << "Terminology matching and revision restoration passed\n";
 }
-

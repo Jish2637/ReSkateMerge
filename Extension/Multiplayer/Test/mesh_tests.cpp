@@ -11,7 +11,19 @@
 #include <map>
 #include <set>
 
+namespace dingosdk::trick_logger {
+bool full_capture() noexcept { return false; }
+void sample(const multiplayer::NativeFrame&, std::string_view) noexcept {}
+}
+namespace dingosdk::skate {
+bool active() noexcept { return false; }
+}
+namespace dingosdk::trick_names {
+void tick(std::uintptr_t, bool) noexcept {}
+}
+
 namespace dingosdk {
+void watch_physics_state(std::uintptr_t, std::uintptr_t) noexcept {}
 bool read_local_camera_transform(std::uintptr_t, std::uintptr_t, std::array<float, 16>&) noexcept { return false; }
 ParksModel simulated_parks;
 std::vector<std::pair<std::uint64_t, ParkChoices>>* simulated_park_receives{};
@@ -313,7 +325,7 @@ void reset_effects() noexcept {}
 bool install_entity_hooks(std::uintptr_t, std::string &) noexcept { return true; }
 void publish_custom_nametags(std::uintptr_t, std::vector<NametagPlayer>, std::optional<std::array<float, 3>>, bool, bool, float, float, bool) noexcept {}
 void set_custom_nametags_enabled(bool) noexcept {}
-GameUiState sample_game_ui_state(std::uintptr_t) noexcept { return {}; }
+GameUiState sample_game_ui_state(std::uintptr_t, bool) noexcept { return {}; }
 void note_local_skater(const Transform &) noexcept {}
 void initialize_native_throwdowns(std::uintptr_t) noexcept {}
 // The relay itself needs the game; routing is checked through each node's inbox.

@@ -2,6 +2,27 @@
   "version": 3,
   "configurePresets": [
     {
+      "name": "vs2026-x64",
+      "displayName": "ReSkateMerge Visual Studio 2026 x64",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/vs2026-x64",
+      "environment": { "VCLibPackagePath": "${sourceDir}/build/no-vcpkg/vcpkg.user" },
+      "toolset": "v145",
+      "cacheVariables": {
+        "DINGOSDK_VERSION": "0.1.0-merged.1",
+        "DINGOSDK_LAUNCHER_AUTO_UPDATE": "OFF",
+        "DINGOSDK_BUILD_TESTS": "OFF",
+        "DINGOSDK_BUILD_FIRST_PERSON_HOST_TESTS": "ON",
+        "DINGOSDK_BUILD_TRICK_LOGGER_TESTS": "ON",
+        "DINGOSDK_BUILD_TERMINOLOGY_TESTS": "ON",
+        "DINGOSDK_BUILD_LAUNCHER_TESTS": "ON",
+        "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "ON",
+        "DINGOSDK_BUILD_TRAINER_TESTS": "ON",
+        "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": "ON"
+      }
+    },
+    {
       "name": "vs2022-x64",
       "displayName": "Visual Studio 2022 x64",
       "generator": "Visual Studio 17 2022",
@@ -23,6 +44,11 @@
     }
   ],
   "buildPresets": [
+    {
+      "name": "merged-release",
+      "configurePreset": "vs2026-x64",
+      "configuration": "Release"
+    },
     {
       "name": "release",
       "configurePreset": "vs2022-x64",
