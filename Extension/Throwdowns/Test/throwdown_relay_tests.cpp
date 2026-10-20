@@ -407,6 +407,68 @@ void spot_battle_flow() {
     check(!throwdown_relay_order(ids), "The shared order outlived the throwdown");
     end_session();
 }
+void skate_cleanup_flow() {
+    namespace skate = dingosdk::skate;
+    const auto start_match = [&](const ThrowdownRelayInput& in, unsigned id, std::uint8_t mask) {
+        tick(in);
+        auto offered = offer(leader, id, "ThrowdownSkate");offered.rules_mask = mask;
+        receive(leader, offered);tick(in);
+        throwdown_relay_spawned(last_token, 0x700, 4);tick(in);
+        local(Local::joined, 0x700);tick(in);
+        auto start = make(Kind::start, leader, id);start.rules_mask = mask;start.settings = {4};start.order = {leader, me};
+        receive(leader, start);tick(in);
+        ThrowdownLocalAction entered{Local::entered};entered.participants = {0x303, 2};
+        throwdown_relay_local(std::move(entered));tick(in);
+        ThrowdownLocalAction turn{Local::turn_started};turn.player = 2;
+        throwdown_relay_local(std::move(turn));tick(in);
+        check(skate::active(), "Verified match did not enable detection");
+    };
+    for (unsigned bit = 0; bit < 4; ++bit) for (unsigned exit = 0; exit < 8; ++exit) {
+        end_session();
+        const ThrowdownRelayInput in{me, {{leader, 3}}, true, 200 + bit * 8 + exit};
+        const unsigned id = 0x90 + bit * 16 + exit;
+        start_match(in, id, static_cast<std::uint8_t>(0xffu & ~(1u << bit)));
+        constexpr unsigned native_categories[]{1, 2, 3, 6};
+        check(skate::native_category_permission(native_categories[bit]) == false, "Disabled category was not restricted during match");
+        auto after = in;
+        switch (exit) {
+        case 0: local(Local::ended);break;
+        case 1: local(Local::quit);break;
+        case 2: receive(leader, make(Kind::close, leader, id));break;
+        case 3: after = no_session;break;
+        case 4: ++after.world;break;
+        case 5: after.local = other_peer;break;
+        case 6: after.in_world = false;break;
+        case 7: after.peers.clear();break;
+        }
+        tick(after);
+        check(!skate::active(), "S.K.A.T.E. restriction survived match/session/world teardown");
+        for (const auto category : {1u, 2u, 3u, 6u})
+            check(!skate::native_category_permission(category), "Native category override survived teardown");
+        check(!skate::take(), "Old match retained a pending result");
+        // Repeated cleanup and a delayed turn from the finished game do not rearm it.
+        local(Local::ended);local(Local::quit);
+        ThrowdownLocalAction late{Local::turn_started};late.player = 2;
+        throwdown_relay_local(std::move(late));tick(after);
+        check(!skate::active(), "Delayed turn reactivated finished match restrictions");
+        auto late_start = make(Kind::start, leader, id);late_start.rules_mask = 0xfb;
+        late_start.settings = {4};late_start.order = {leader, me};
+        receive(leader, late_start);tick(after);
+        check(!skate::active(), "Delayed start message resurrected a closed match");
+    }
+    end_session();
+    const ThrowdownRelayInput fresh{me, {{leader, 3}}, true, 400};
+    start_match(fresh, 0xe0, 0xff);
+    check(skate::native_category_permission(3) == true, "A new match inherited disabled grinds");
+    local(Local::ended);tick(fresh);
+    // A late teardown must also stop an orphaned detector with no running relay match.
+    skate::begin({0xfb, true});skate::turn(true);
+    local(Local::quit);tick(fresh);
+    check(!skate::active(), "Quit left an orphaned detector running");
+    end_session();
+    skate::begin({0xfb, true});skate::turn(true);tick(no_session);
+    check(!skate::active(), "Idle disconnected relay left an orphaned detector running");
+}
 // S.K.A.T.E.: each attempt replayed once, in the owner's same turn.
 void skate_flow() {
     const ThrowdownRelayInput in{me, {{leader, 3}, {other_peer, 5}}, true, 82};
@@ -858,6 +920,7 @@ int main() {
         removal_flow();
         spot_battle_flow();
         grouped_number_checks();
+        skate_cleanup_flow();
         skate_flow();
         skate_leader_flow();
         alone_flow();

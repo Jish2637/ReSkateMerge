@@ -5,11 +5,12 @@
 #include <stdexcept>
 #include "Extension/Skater/native_trick_metadata.h"
 #include <string>
+#include <Windows.h>
 namespace dingosdk::profile_runtime {thread_local std::uintptr_t executing_expression{};}
 namespace {
 using Address=std::uintptr_t;
 bool original_membership{};
-std::uintptr_t native_contains(const void*,const void*,const void*,std::uint8_t* out){*out=original_membership;return 77;}
+std::uintptr_t native_contains(const void*,const void*,const void*,std::uint8_t* out){*out=original_membership;SetLastError(0x6abc);return 77;}
 std::uintptr_t native_or(const void* a,const void* b,std::uint8_t* out){*out=*static_cast<const std::uint8_t*>(a)||*static_cast<const std::uint8_t*>(b);return 88;}
 void require(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 }
@@ -99,4 +100,18 @@ void native_filter_regressions() {
     require(!skate::prepare_native_filter(vm_at) && skate::take_bridge_error(),"Changed category operands accepted");
     profile_runtime::executing_expression=0;
     skate::end();
+    profile_runtime::executing_expression=vm_at;
+    // Installed callbacks survive the match, but must not inspect unfamiliar
+    // arguments or overwrite either native output after detection stops.
+    for (const bool membership : {false,true}) {
+        original_membership=membership;
+        require(contains(nullptr,nullptr,nullptr,&out)==77 && bool(out)==membership && GetLastError()==0x6abc,
+            "Inactive category adapter changed the native result or last error");
+        require(ignored(nullptr,nullptr,nullptr,&out)==77 && bool(out)==membership && GetLastError()==0x6abc,
+            "Inactive ignored adapter interpreted labels or changed the native result");
+        require(!skate::take_bridge_error(),"Inactive adapter reported an irrelevant binding error");
+    }
+    skate::turn(true);
+    require(!skate::active() && !skate::native_category_permission(3),"Late turn restarted a finished match");
+    skate::end();profile_runtime::executing_expression=0;
 }

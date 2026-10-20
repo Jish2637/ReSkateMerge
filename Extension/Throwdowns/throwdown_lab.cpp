@@ -2010,7 +2010,7 @@ void throwdown_lab_before_level_transition(unsigned next) noexcept {
     // 14, 22 and 3 leave a level or sublevel, 24 shuts down: the level's bundles are unloaded,
     // and the events' types with them.
     if (next != 14 && next != 22 && next != 3 && next != 24) return;
-    skate::reset_native_eligibility();
+    skate::end(); // Unloading a world ends the match, not just its latest attempt.
     try {
         auto& l = lab();
         std::lock_guard lock(l.mutex);

@@ -1,4 +1,4 @@
-# ReSkateMerge v0.1.0-merged.3 validation
+# ReSkateMerge v0.1.0-merged.4 validation
 
 Built on Windows x64 with Visual Studio 2026, MSVC 19.51.36247, Windows SDK
 10.0.26100.0 and CMake 4.3.1. Release build with the `vs2026-x64` /
@@ -13,6 +13,12 @@ Other tests that optionally read game assets exercised their synthetic fixtures.
 
 Coverage includes:
 
+- S.K.A.T.E. lifecycle regressions with flips, grabs, grinds and ground tricks
+  disabled across completion, quit, host closure, disconnect, world/session
+  changes and leaving the playable world. Repeated teardown, delayed start/turn
+  events and orphaned detection cannot reactivate restrictions. A fresh match
+  uses its own new rules. Inactive native callbacks preserve original outputs,
+  return values and Windows last-error values without interpreting labels.
 - A fake Steam HID descriptor callback re-enters the attributes observer: both
   original attributes calls execute, only one descriptor query runs, the
   independent reader stays bypassed and exception unwinding restores the gate.
@@ -51,3 +57,5 @@ performed. Before treating the build as gameplay-verified, check first-person
 camera/bail/spectator behavior, native controller navigation, terminology HUD
 refresh/restoration, rule persistence across restarts, Pop-Shuvit → Shuv and
 held 360 → 3 Shuv with Capture Last, combo rows, and multiplayer ownership/matching.
+For merged.4, finish or cancel a match with grinds disabled and immediately grind
+in free skate without restarting; repeat after quitting or disconnecting.

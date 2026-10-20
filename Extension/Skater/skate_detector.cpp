@@ -49,9 +49,10 @@ void begin(Rules rules) {
 }
 void end() {
     auto& s=state();std::lock_guard lock(s.mutex);s.enabled=false;s.own=s.done=false;s.bridge_failed=false;
-    s.tracker=trick_logger::TrickSetTracker{true,true,s.rules.allows(Category::grinds)};s.rows.clear();s.ready.reset();s.legacy.reset();s.pending.clear();
+    s.rules={};s.tracker=trick_logger::TrickSetTracker{true,true,false};s.rows.clear();s.ready.reset();s.legacy.reset();s.pending.clear();
     s.native_eligible=false;s.reverts.clear();s.wipeouts.reset();s.diagnostics.clear();s.excluded.clear();s.boundary_logged=false;
     s.target.clear();s.target_display.clear();s.target_evidence=Json::object();s.history.clear();s.serial=0;
+    s.sampled=s.recovery_seen=false;s.native_state=0;s.turn_started=0;s.target_native={};
 }
 void turn(bool own) {
     auto& s=state();std::lock_guard lock(s.mutex);s.recovery_seen=false;s.reverts.clear();s.native_state=0;s.own=own;s.done=false;s.sampled=false;s.turn_started=GetTickCount64();

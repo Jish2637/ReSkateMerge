@@ -35,6 +35,7 @@ std::uintptr_t ignored_contains(const void* array,const void* value,const void* 
         if(!original)throw std::runtime_error("Missing native ignored-trick function");
     } catch(...) {write_bool(out,true);bridge_error();return 0;}
     const auto result=original(array,value,type,out);
+    if(!active())return result; // Installed adapters are transparent outside a match.
     try {
         // ScorableName is a native CString. ArrayContains receives addresses of
         // the value and TypeInfo registers, rather than their pointees.
@@ -63,6 +64,7 @@ std::uintptr_t contains(const void* array,const void* value,const void* type,std
         if(!original)throw std::runtime_error("Missing native skate category function");
     } catch(...) {write_bool(out,false);bridge_error();return 0;}
     const auto result=original(array,value,type,out);
+    if(!active())return result;
     try {
         const auto category=read<std::uint32_t>(reinterpret_cast<Address>(value));
         if(const auto allowed=native_category_permission(category)) {

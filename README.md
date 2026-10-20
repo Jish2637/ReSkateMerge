@@ -6,7 +6,7 @@ in the private [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerg
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.0-merged.3-Windows-x64.zip` from this repository's
+1. Download `ReSkateMerge-v0.1.0-merged.4-Windows-x64.zip` from this repository's
    private release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
@@ -30,6 +30,10 @@ at once: opening Insert or chat must neutralize each report without generating
 a D-pad press. It also prevents Steam's HID descriptor wrapper from recursively
 re-entering metadata discovery, which caused a startup stack overflow in merged.2.
 See [controller fix](contrib/merge/CONTROLLER_FIX.md).
+
+`v0.1.0-merged.4` clears active S.K.A.T.E. trick restrictions on match completion,
+quitting, host closure, disconnects and world/session teardown. Saved setup options
+remain available for the next match; native trick handling resumes outside it.
 
 ## Build and verify
 

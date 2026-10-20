@@ -413,6 +413,7 @@ void resolve_quit_turn(Relay &r, std::uint64_t player) {
 void end_running(Relay &r) {
     skate::end();trick_logger::observe_setup_menu(0,0);r.rules={};r.detector_submitted.clear();r.detector_applied.clear();
     r.running.reset();
+    r.running_series.clear();
     r.shown = 0;
     r.scores.clear();
     r.remote.clear();
@@ -638,8 +639,8 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
             for (const auto player : r.players)
                 if (player != r.local)
                     if (const auto id = virtual_id(r, player); id && queue_throwdown_destroy_event(id)) break;
-            end_running(r); // nothing more to follow, hide or replay here
         }
+        end_running(r); // Also clear a detector whose native match already disappeared.
         break;
     case Local::attempt:
         if(r.rules.verified)break;
@@ -716,6 +717,7 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
     case Kind::close:
         if (m.leader != sender || mirror == r.mirrors.end()) return;
         destroy_mirror(r, mirror->second, now);
+        if (r.running && *r.running == key) end_running(r);
         return;
     case Kind::join:
         if (m.leader == r.local) {
@@ -1136,7 +1138,7 @@ void reset(Relay &r, bool destroy_copies, std::uint64_t now) {
     r.mirrors.clear();
     r.spawn_refused.clear();
     r.declined.clear();
-    r.running.reset();
+    end_running(r);
     r.scores.clear();
     r.early.clear();
     r.remote.clear();
@@ -1423,7 +1425,7 @@ std::vector<std::vector<std::uint8_t>> tick_throwdown_relay(std::uintptr_t base,
     try {
         apply_queue_timer(r, linked, now);
         if (!linked) {
-            if (r.local || !r.mirrors.empty() || r.hosted) {
+            if (r.local || !r.mirrors.empty() || r.hosted || r.running || r.rules.verified || skate::active()) {
                 if (r.local) note("session over; linked throwdowns removed.");
                 r.in_world = input.in_world;
                 if (input.barred) {
@@ -1492,6 +1494,7 @@ std::vector<std::vector<std::uint8_t>> tick_throwdown_relay(std::uintptr_t base,
             if (const auto m = decode_throwdown(bytes)) on_message(r, sender, *m, now);
             else logging::write(logging::Level::warning, logging::Channel::progression, "Throwdowns: unreadable message from another player dropped.");
         }
+        if (!r.in_world && (r.running || r.rules.verified || skate::active())) end_running(r);
         if(r.running && r.rules.verified && r.active==r.local && r.turns[r.local]>0) {
             if(auto result=skate::take()) {
                 const auto turn=r.turns[r.local];
