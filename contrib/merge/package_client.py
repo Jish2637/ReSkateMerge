@@ -50,8 +50,9 @@ def main():
     presets.mkdir(parents=True)
     shutil.copy2(build / 'Release/scripts/Custom/FirstPersonNative/presets/bundled/recommended.json', presets)
     for source, name in ((ROOT/'README.md','README.md'),(ROOT/'LICENSE','LICENSE'),
-                         (ROOT/'contrib/merge/PROVENANCE.md','PROVENANCE.md'),
-                         (ROOT/'contrib/merge/VALIDATION.md','VALIDATION.md')):
+                         (ROOT/'contrib/merge/PROVENANCE.md','contrib/merge/PROVENANCE.md'),
+                         (ROOT/'contrib/merge/VALIDATION.md','contrib/merge/VALIDATION.md')):
+        (stage/name).parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(source, stage/name)
     # Retain the vendored dependency notices along with distributed binaries.
     for source in (ROOT/'External').rglob('*'):
