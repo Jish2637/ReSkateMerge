@@ -1,4 +1,4 @@
-# ReSkateMerge v0.1.0-merged.1 validation
+# ReSkateMerge v0.1.0-merged.2 validation
 
 Built on Windows x64 with Visual Studio 2026, MSVC 19.51.36247, Windows SDK
 10.0.26100.0 and CMake 4.3.1. Release build with the `vs2026-x64` /
@@ -13,6 +13,10 @@ Other tests that optionally read game assets exercised their synthetic fixtures.
 
 Coverage includes:
 
+- USB DualSense/Edge batched reads (including the reported 192 bytes / three
+  64-byte reports into a 2048-byte buffer), neutral D-pad/buttons/triggers,
+  USB and Bluetooth layouts, counters, CRC updates, guard bytes, malformed
+  transfers and idempotent completion processing. See CONTROLLER_FIX.md.
 - Native detector fixtures, stance/body rotation, native filter and logger,
   localized identities, replay/capture handling and throwdown matching.
 - Terminology test27: native label retention, pending prewrite publication,

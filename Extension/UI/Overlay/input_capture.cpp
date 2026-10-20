@@ -4,7 +4,9 @@
 #include "input_capture.h"
 #include "held_input.h"
 #include "Engine/Game/Input/playstation_report.h"
+#include "Engine/Game/Input/playstation_capture.h"
 #include <hidsdi.h>
+#include <hidpi.h>
 #include <atomic>
 #include <format>
 #include <array>
@@ -42,9 +44,10 @@ HeldInput& held_input() { static auto* value = new HeldInput; return *value; }
 
 struct InputCaptureHooks {
     Hook hid_attributes, read_file, overlapped, overlapped_ex, completion, completion_ex, close_handle;
-    struct HidRead { HANDLE file; void* buffer; DWORD capacity; PlayStationPad kind; };
+    struct HidDevice { PlayStationPad kind{}; USHORT report_length{}; };
+    struct HidRead { HANDLE file; void* buffer; DWORD capacity; PlayStationPad kind; USHORT report_length{}; };
     std::mutex hid_mutex;
-    std::map<HANDLE, PlayStationPad> hid_devices;
+    std::map<HANDLE, HidDevice> hid_devices;
     std::map<OVERLAPPED*, HidRead> hid_reads;
     Hook register_raw;
     Hook async_key, key, keyboard, raw_data, raw_buffer, capture, release_capture, cursor, show_cursor, physical_cursor, cursor_position;
@@ -65,14 +68,32 @@ struct InputCaptureHooks {
 };
 InputCaptureHooks& input_hooks() { static auto* hooks = new InputCaptureHooks; return *hooks; }
 
+InputCaptureHooks::HidDevice describe_hid(HANDLE file, PlayStationPad kind) {
+    if (kind == PlayStationPad::none) return {};
+    // HID capability calls can re-enter ReadFile. Bypass our capture and never
+    // hold hid_mutex while querying the driver (the historical lock regression).
+    OverlayInputAccess access;
+    PHIDP_PREPARSED_DATA preparsed{};
+    if (!HidD_GetPreparsedData(file, &preparsed)) return {};
+    HIDP_CAPS caps{};
+    const auto status = HidP_GetCaps(preparsed, &caps);
+    HidD_FreePreparsedData(preparsed);
+    if (status != HIDP_STATUS_SUCCESS || caps.UsagePage != 1 || caps.Usage != 5 || caps.InputReportByteLength < 10) return {};
+    return {kind, caps.InputReportByteLength};
+}
 BOOLEAN __stdcall captured_hid_attributes(HANDLE file, PHIDD_ATTRIBUTES attributes) {
-    const auto result = original<decltype(&HidD_GetAttributes)>(input_hooks().hid_attributes)(file, attributes);
+    BOOLEAN result;
+    {
+        OverlayInputAccess access;
+        result = original<decltype(&HidD_GetAttributes)>(input_hooks().hid_attributes)(file, attributes);
+    }
     const auto error = GetLastError();
     if (result && attributes) {
         const auto kind = playstation_pad(attributes->VendorID, attributes->ProductID);
         if (kind != PlayStationPad::none) {
+            const auto device = describe_hid(file, kind);
             std::lock_guard lock(input_hooks().hid_mutex);
-            input_hooks().hid_devices[file] = kind;
+            input_hooks().hid_devices[file] = device;
         }
     }
     SetLastError(error);
@@ -98,33 +119,12 @@ void refresh_bluetooth_crc(std::uint8_t* bytes, DWORD size) noexcept {
 }
 void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
     if (!read.buffer || size > read.capacity) return;
-    if (!block_polled_input()) {
-        if (!overlay_input_access)
-            first_person_integration::filter_stick_report(read.kind,{static_cast<std::uint8_t*>(read.buffer),size});
-        return;
-    }
     auto* bytes = static_cast<std::uint8_t*>(read.buffer);
-    // USB or Bluetooth decides where the buttons are in a report with id 1. It is the device's
-    // report length that tells them apart, and Windows pads every read to that length, so it
-    // is how many bytes were read: not how large a buffer the game happens to read into. A
-    // game reading a USB DualSense into a larger buffer had its d-pad byte written as "up"
-    // here, and placed a session marker whenever a menu took the input. (Nothing is asked of
-    // the game's handle for this: 2.0.4 did, as the pad was first read.)
+    // handle_hid splits completions using the cached device report length.
+    // Here size is one report, including when a USB read returned 192 bytes.
     const bool bluetooth = playstation_bluetooth(size);
     if (!parse_playstation_report(read.kind, bluetooth, bytes, size)) return;
-    const bool sense_full = read.kind == PlayStationPad::dualsense &&
-        (bytes[0] == 0x31 || (bytes[0] == 1 && !bluetooth));
-    const unsigned offset = bytes[0] == 0x31 ? 2 : bytes[0] == 0x11 ? 3 : 1;
-    auto* data = bytes + offset;
-    std::fill_n(data, 4, std::uint8_t{128});
-    if (sense_full) {
-        data[4] = data[5] = 0; // triggers; retain report sequence at +6
-        data[7] = 8; data[8] = data[9] = 0;
-    } else {
-        data[4] = 8; data[5] = 0; data[6] &= 0xfc; // retain DS4 sequence bits
-        data[7] = data[8] = 0;
-    }
-    refresh_bluetooth_crc(bytes, size);
+    neutralize_playstation_report(read.kind, {bytes, size});
     static std::atomic<bool> reported{};
     if (!reported.exchange(true)) logging::printf(logging::Level::info, logging::Channel::input,
         "Native PlayStation HID report neutralized; overlay retains its independent input stream. (%s over %s, report 0x%02x of %lu bytes, "
@@ -177,12 +177,24 @@ void filter_hid(const InputCaptureHooks::HidRead& read, DWORD size) noexcept {
 // A finished native PlayStation read of the game's: neutral while a menu holds the input, else
 // through the gamepad filter.
 void handle_hid(const InputCaptureHooks::HidRead& read, DWORD size) noexcept {
-    if (block_polled_input()) neutral_hid(read, size);
-    else {
-        filter_hid(read, size);
-        if (!overlay_input_access && read.buffer && size <= read.capacity)
-            first_person_integration::filter_stick_report(read.kind,{static_cast<std::uint8_t*>(read.buffer),size});
-    }
+    if (!read.buffer || size > read.capacity) return;
+    const bool capture = block_polled_input();
+    const auto reports = visit_playstation_reports(read.kind, read.report_length,
+        {static_cast<std::uint8_t*>(read.buffer), size}, [&](std::span<std::uint8_t> report) {
+            auto item = read; item.buffer = report.data();
+            const auto length = static_cast<DWORD>(report.size());
+            if (capture) neutral_hid(item, length);
+            else {
+                filter_hid(item, length);
+                if (!overlay_input_access) first_person_integration::filter_stick_report(item.kind, report);
+            }
+        });
+    static std::atomic<bool> reported_batch{};
+    if (reports > 1 && !reported_batch.exchange(true))
+        logging::printf(logging::Level::info, logging::Channel::input,
+            "Native PlayStation HID batch: %lu bytes split into %zu reports of %u bytes (%s); buffer %lu.",
+            size, reports, static_cast<unsigned>(read.report_length),
+            playstation_bluetooth(read.report_length) ? "Bluetooth" : "USB", read.capacity);
 }
 void complete_hid(OVERLAPPED* request, DWORD bytes, bool success, bool finished) {
     auto& h = input_hooks();
@@ -207,21 +219,27 @@ BOOL WINAPI captured_read_file(HANDLE file, LPVOID buffer, DWORD size, LPDWORD b
             std::lock_guard lock(h.hid_mutex);
             known = h.hid_devices.contains(file);
         }
-        if (!known && size >= 10 && size <= 512) {
+        if (!known && size >= 10 && size <= 64 * 1024) {
             const auto error = GetLastError();
             HIDD_ATTRIBUTES attributes{sizeof(attributes)};
-            const auto okay = original<decltype(&HidD_GetAttributes)>(h.hid_attributes)(file, &attributes);
+            BOOLEAN okay;
+            {
+                OverlayInputAccess access;
+                okay = original<decltype(&HidD_GetAttributes)>(h.hid_attributes)(file, &attributes);
+            }
             const auto kind = okay ? playstation_pad(attributes.VendorID, attributes.ProductID) : PlayStationPad::none;
+            const auto device = describe_hid(file, kind);
             {
                 std::lock_guard lock(h.hid_mutex);
-                h.hid_devices[file] = kind;
+                h.hid_devices[file] = device;
             }
             SetLastError(error);
         }
         std::lock_guard lock(h.hid_mutex);
         const auto found = h.hid_devices.find(file);
-        if (found != h.hid_devices.end() && found->second != PlayStationPad::none) {
-            read.kind = found->second;
+        if (found != h.hid_devices.end() && found->second.kind != PlayStationPad::none) {
+            read.kind = found->second.kind;
+            read.report_length = found->second.report_length;
             if (request) h.hid_reads[request] = read;
         }
     }

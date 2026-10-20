@@ -1,6 +1,7 @@
 """Package a clean, tested ReSkateMerge Release build; never include game data."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -19,13 +20,18 @@ def main():
     if git('status', '--porcelain'):
         raise SystemExit('Commit source changes before packaging.')
     build = ROOT / 'build/vs2026-x64'
+    version_match = re.search(r'^DINGOSDK_VERSION:STRING=([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?)$',
+                              (build / 'CMakeCache.txt').read_text(), re.MULTILINE)
+    if not version_match:
+        raise SystemExit('No valid configured release version found.')
+    version = version_match.group(1)
     tests = ET.parse(build / 'test-results.xml').getroot()
     if int(tests.attrib.get('failures', '0')) or int(tests.attrib.get('errors', '0')):
         raise SystemExit('CTest reported failures.')
     if int(tests.attrib.get('tests', '0')) < 15:
         raise SystemExit('Expected detection, terminology and first-person regression suites.')
     names = {case.attrib['name'] for case in tests.iter('testcase')}
-    required = {'trick_terminology', 'skate_rules', 'trick_logger', 'first_person_camera_host'}
+    required = {'trick_terminology', 'skate_rules', 'trick_logger', 'first_person_camera_host', 'playstation_report'}
     if not required.issubset(names):
         raise SystemExit('Missing required feature regressions: '+str(required-names))
     for case in tests.iter('testcase'):
@@ -35,7 +41,7 @@ def main():
     if 'launcher_binary_updates = false' not in update_config:
         raise SystemExit('Custom launcher update protection is not enabled.')
     output = ROOT / 'artifacts'
-    stage = output / 'client-v0.1.0-merged.1'
+    stage = output / ('client-v' + version)
     stage.mkdir(parents=True, exist_ok=False)
     hashes = {}
     for name in ('ReSkateLauncher.exe', 'ReSkate.dll'):
@@ -51,6 +57,7 @@ def main():
     shutil.copy2(build / 'Release/scripts/Custom/FirstPersonNative/presets/bundled/recommended.json', presets)
     for source, name in ((ROOT/'README.md','README.md'),(ROOT/'LICENSE','LICENSE'),
                          (ROOT/'contrib/merge/PROVENANCE.md','contrib/merge/PROVENANCE.md'),
+                         (ROOT/'contrib/merge/CONTROLLER_FIX.md','contrib/merge/CONTROLLER_FIX.md'),
                          (ROOT/'contrib/merge/VALIDATION.md','contrib/merge/VALIDATION.md')):
         (stage/name).parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(source, stage/name)
@@ -60,18 +67,18 @@ def main():
             target=stage/'licenses'/source.relative_to(ROOT/'External')
             target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(source,target)
-    metadata={'version':'0.1.0-merged.1','source_commit':git('rev-parse','HEAD'),
+    metadata={'version':version,'source_commit':git('rev-parse','HEAD'),
               'source_repository':'https://github.com/Jish2637/ReSkateMerge',
               'architecture':'Windows x64','automatic_binary_updates':False,
               'binaries_sha256':hashes,'ctest_tests':int(tests.attrib['tests']),
               'ctest_failures':0,'ctest_skipped':int(tests.attrib.get('skipped','0')),
               'live_game_validation':False}
     (stage/'BUILD_INFO.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
-    name='ReSkateMerge-v0.1.0-merged.1-Windows-x64.zip'
+    name=f'ReSkateMerge-v{version}-Windows-x64.zip'
     archive=output/name
     count=package(stage,archive)
     digest=hashlib.sha256(archive.read_bytes()).hexdigest()
-    (output/'SHA256SUMS.txt').write_text(f'{digest}  {name}\n',encoding='ascii')
+    (output/f'SHA256SUMS-v{version}.txt').write_text(f'{digest}  {name}\n',encoding='ascii')
     print(f'Packaged {count} files: {archive}\nSource: {metadata["source_commit"]}\nSHA256: {digest}')
 
 if __name__=='__main__':
