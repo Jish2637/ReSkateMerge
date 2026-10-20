@@ -69,3 +69,13 @@ Upstream SHA-256 references:
 `src/native_head_look.h`: `4604b3c9cc807561fbaf0f8a1d25420a62a93f505978fb3722a6ec53bf99f73f`;
 `src/glance_emote_policy.h`: `a3479376cfb90daf01058b2dde3bf7f80c6ff7a20ed335e092735f10634f5e35`.
 Original GPL licensing and attribution remain intact.
+
+## Public update channel in merged.6
+
+The launcher and runtime come only from Jish2637/ReSkateMerge release assets.
+The new schema-1 launcher manifest retains the game and DepotDownloader values
+from the original ReSkate v2.1.0 `launcher.json`, retrieved from its public release
+and cross-checked against `Engine/Game/Build/supported_build.h`. It does not
+import upstream launcher/runtime/server downloads. Existing saved update choices
+and --no-update remain effective. The repository is made public with the user's
+explicit authorization after source-history review and verified draft assets.

@@ -1,11 +1,11 @@
-# ReSkateMerge v0.1.0-merged.5 validation
+# ReSkateMerge v0.1.0-merged.6 validation
 
 Built on Windows x64 with Visual Studio 2026, MSVC 19.51.36247, Windows SDK
 10.0.26100.0 and CMake 4.3.1. Release build with the `vs2026-x64` /
-`merged-release` presets succeeded. Launcher automatic binary updates are
-compiled off; the multiplayer protocol remains 52.
+`merged-release` presets succeeded. Launcher binary updates are compiled on
+exclusively for Jish2637/ReSkateMerge; the multiplayer protocol remains 52.
 
-CTest: **105 passed, 0 failed, 1 skipped**, out of 106 selected tests. The
+CTest: **106 passed, 0 failed, 1 skipped**, out of 107 selected tests. The
 installed-game-only `trainer_tuning_names` check skips because
 `DINGOSDK_TEST_GAME_ROOT` is unset. Set that CMake cache path to a supported game
 installation to run it; invalid explicitly configured game data remains a failure.
@@ -13,6 +13,11 @@ Other tests that optionally read game assets exercised their synthetic fixtures.
 
 Coverage includes:
 
+- Launcher updater: stable/preview selection, ignored drafts, resolved assets,
+  update preferences and --no-update, wrong hashes, failed downloads, upstream
+  binary rejection, mismatched tags and missing manifests. A copied test process
+  exercises replacement of its own running EXE, restart-loop suppression and
+  cleanup of the previous launcher, entirely inside a disposable fixture.
 - First Person Mod 1.36.2 native head movement: default OFF for old settings,
   live stick-settings commands, JSON save/reload and personal preset round trips;
   camera-only passthrough, immediate restoration of capture when disabled,
@@ -52,7 +57,7 @@ Coverage includes:
 
 Release ZIP helper tests: 5 passed, 2 platform-specific cases skipped. Packaging
 validates the archive, required feature-test report, Windows x64 PE headers and
-disabled launcher updates. `BUILD_INFO.json` records the final source commit and
+the pinned ReSkateMerge update source. `BUILD_INFO.json` records the final source commit and
 both binary checksums; `SHA256SUMS.txt` records the ZIP checksum. Import-table
 inspection found only Windows system DLL dependencies for the launcher/runtime.
 The first-person recommended preset and dependency license notices are included.
@@ -79,3 +84,11 @@ saved settings and personal presets across restart, single-press glances versus
 double-tap emotes, and entering/exiting first person with shoulders released
 before D-pad. Repeat Insert/chat capture with the USB PS5 controller. These live
 checks remain pending; automated checks do not establish game/observer behavior.
+
+Merged.6 release validation also checks anonymous public release discovery,
+manifest/binary downloads and an isolated older-client fixture updated to the
+published binary hashes, followed by a second up-to-date check. These results are
+recorded separately in `artifacts/public-update-validation.log`. No game launch
+or installation is part of that check. The repository history was scanned with
+Gitleaks 8.30.1: all 11 candidates were reviewed as test placeholders, vendored
+code/hashes or the documented public Sentry ingestion key, not credentials.

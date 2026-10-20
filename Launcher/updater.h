@@ -49,6 +49,13 @@ struct Config {
 
 // Release builds replace ReSkateLauncher.exe and ReSkate.dll; local builds only report.
 bool binary_updates_enabled() noexcept;
+bool updates_allowed(bool preference, bool no_update_argument) noexcept;
+bool launcher_update_needed(bool relaunched, const std::filesystem::path& self, const RemoteFile& file);
+#ifdef DINGOSDK_LAUNCHER_UPDATE_TESTS
+// Unit-test transport only; absent from distributed launcher/server builds.
+using TestGet = void (*)(const std::wstring&, std::uint64_t, const std::function<void(const char*, DWORD)>&);
+void set_test_get(TestGet transport);
+#endif
 Config parse_config(std::string_view text);
 // Returns nothing when offline or the config is invalid; the reason is logged.
 // `prereleases`: the newest release that carries a launcher.json, pre-release or not (the

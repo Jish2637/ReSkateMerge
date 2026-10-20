@@ -2,18 +2,21 @@
 
 Combined Windows x64 client: **skate-trick-detection-fixes → jish-fpm-native →
 Terminology test27**, based on ReSkate 2.1.0. Source and releases are maintained
-in the private [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerge).
+in the public [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerge).
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.0-merged.5-Windows-x64.zip` from this repository's
-   private release and extract it into a new folder of its own, outside Steam's
+1. Download `ReSkateMerge-v0.1.0-merged.6-Windows-x64.zip` from this repository's
+   release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
    existing ReSkate folder, close the game, back up the launcher and DLL, then
    replace them and copy the bundled `scripts` directory into that folder.
-3. This launcher is compiled with automatic ReSkate replacement disabled. Keep
-   **Install ReSkate updates** off; install future combined builds manually.
+3. This launcher updates exclusively from **Jish2637/ReSkateMerge**. Keep
+   **Install ReSkate updates** enabled to receive combined builds; a saved OFF
+   choice stays off. The launcher offers updates through its usual controls.
+   **Test pre-releases** opts into preview releases; `--no-update` disables
+   updates for that launch. Offline checks keep the installed client usable.
 4. Open **INS > Skater > First Person** for the native first-person options.
    Configure bindings under **Settings > Controls > Camera**. Remove the separate
    Jish First Person DLL before using the integrated version.
@@ -49,6 +52,14 @@ The first-person toggle always suppresses its D-pad emote when entering or
 leaving first person, including when the shoulders are released before D-pad.
 Unrelated controls and the physical shortcut reader remain available.
 
+`v0.1.0-merged.6` enables public GitHub launcher updates for this combined client.
+Install this ZIP manually once: merged.5 and earlier have updates compiled off.
+Future normal releases supply `launcher.json`, `ReSkateLauncher.exe` and
+`ReSkate.dll`, pinned by size and SHA-256. The launcher restarts after updating
+itself and leaves game files, saved preferences, mods and personal presets alone.
+It does not fall back to original upstream ReSkate binaries. The bundled
+recommended preset is unchanged from merged.5.
+
 ## Build and verify
 
 Install Visual Studio 2026 with Desktop development with C++, the v145 toolset,
@@ -72,6 +83,17 @@ Package a clean committed build with:
 ```powershell
 python contrib/merge/package_client.py
 ```
+
+The packager also generates `artifacts/launcher-v<VERSION>.json` and checksums
+for the ZIP, manifest and binaries. It refuses a dirty tree, failed required
+tests, stale source metadata or a different compiled update repository. Game
+and DepotDownloader pins are retained in `contrib/merge/launcher-base.json`.
+For future releases, write `artifacts/RELEASE_NOTES-v<VERSION>.md`, push the
+committed source, then run `python contrib/merge/publish_release.py prepare
+<VERSION>` and `python contrib/merge/publish_release.py publish <VERSION>`.
+Preparation uploads and verifies a draft; publication makes it a normal latest
+release. The one-time visibility change uses `make-public <VERSION>` after the
+reviewed history audit and prepared assets, before initial publication.
 
 See [source provenance](contrib/merge/PROVENANCE.md) and
 [validation](contrib/merge/VALIDATION.md). Automated checks do not establish live

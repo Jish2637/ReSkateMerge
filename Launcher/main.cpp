@@ -54,7 +54,7 @@ bool apply_headless_updates(const app::Session& session, const update::Config& c
             dingosdk::logging::log(Level::warning, Channel::launcher, "ReSkate.dll update failed: {}", exception.what());
         }
     }
-    if (relaunched || config.launcher.url.empty() || update::file_matches(session.self, config.launcher)) return false;
+    if (!update::launcher_update_needed(relaunched,session.self,config.launcher)) return false;
     try {
         update::replace_running_launcher(session.self, config.launcher);
         dingosdk::logging::log(Level::info, Channel::launcher, "Launcher updated to {}; restarting.", config.launcher.version);
@@ -71,7 +71,8 @@ bool apply_headless_updates(const app::Session& session, const update::Config& c
 void run_headless(const app::Session& session, std::vector<std::wstring> arguments,
                   const std::vector<std::wstring>& original) {
     const bool relaunched = take_flag(arguments, L"--reskate-updated");
-    const bool updates = !take_flag(arguments, L"--no-update") && dingosdk::launcher_gui::updates_enabled(session);
+    const bool no_update=take_flag(arguments,L"--no-update");
+    const bool updates=update::updates_allowed(dingosdk::launcher_gui::updates_enabled(session),no_update);
     // With no options of its own, the launch is the one the launcher window's Play would make.
     // A map to start on is not one of those: "--no-gui -map <name>" is that launch, on that map.
     auto map = dingosdk::launcher::take_map_option(arguments);

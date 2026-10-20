@@ -322,7 +322,7 @@ update::Progress Launcher::progress_for(std::string label) {
 }
 
 bool Launcher::launcher_outdated(const update::Config& config) const {
-    return !relaunched_ && !config.launcher.url.empty() && !update::file_matches(session_.self, config.launcher);
+    return update::launcher_update_needed(relaunched_,session_.self,config.launcher);
 }
 
 bool Launcher::runtime_outdated(const update::Config& config) const {
@@ -342,7 +342,7 @@ void Launcher::run_check() {
     // (Unreachable GitHub: what the last check found stands.)
     if (config) prerelease_available_ = config->prerelease_available;
     const bool newer = config && (launcher_outdated(*config) || runtime_outdated(*config));
-    if (newer && update::binary_updates_enabled() && binaries_ && settings_.updates) {
+    if (newer && update::updates_allowed(settings_.updates,!binaries_)) {
         set(Phase::update_available, "A ReSkate update is ready",
             std::format("{} {} will be downloaded and installed.", config->prerelease ? "Pre-release" : "Version",
                 config->runtime.version.empty() ? config->launcher.version : config->runtime.version));
@@ -384,6 +384,7 @@ void Launcher::run_check() {
 }
 
 void Launcher::run_updates() {
+    if(!update::updates_allowed(settings_.updates,!binaries_)) return run_check();
     const auto config = this->config();
     if (!config) return run_check();
     set(Phase::updating, "Updating ReSkate");

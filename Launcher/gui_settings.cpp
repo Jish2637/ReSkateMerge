@@ -433,9 +433,9 @@ void settings_window(Launcher& launcher, const Fonts& fonts, ImVec2 size, Ui& ui
                       settings.keep_open_after_launch);
         {
             const bool updates_were = settings.updates, prereleases_were = settings.prereleases;
+            const auto update_hint="Updates come from "+update::releases_page()+". Turn off to keep the ReSkate.dll and launcher you have. Skate's own Steam updates are not affected.";
             setting_check("Install ReSkate updates",
-                          "Turn off to keep the ReSkate.dll and launcher you have, such as a test build someone gave you. "
-                          "Skate's own Steam updates are not affected.",
+                          update_hint.c_str(),
                           settings.updates);
             // Only while there is a pre-release to test (one newer than the latest release), or while
             // it is on, so it can always be turned off.

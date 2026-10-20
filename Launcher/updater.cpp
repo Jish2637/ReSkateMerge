@@ -25,6 +25,10 @@
 namespace fs = std::filesystem;
 
 namespace dingosdk::launcher_update {
+#ifdef DINGOSDK_LAUNCHER_UPDATE_TESTS
+TestGet test_get{};
+void set_test_get(TestGet transport) { test_get=transport; }
+#endif
 namespace {
 
 constexpr std::uint64_t max_config_bytes = 256 * 1024;
@@ -83,6 +87,9 @@ std::wstring quote_argument(std::wstring_view value) {
 // Streams an HTTPS GET into `sink`, following up to five HTTPS redirects.
 void http_get(const std::wstring& url, std::uint64_t limit, int timeout_ms,
               const std::function<void(const char*, DWORD)>& sink) {
+#ifdef DINGOSDK_LAUNCHER_UPDATE_TESTS
+    if(test_get) { test_get(url,limit,sink);return; }
+#endif
     const auto win32 = [](std::string_view action) {
         fail(std::format("{} failed (Windows error {})", action, GetLastError()));
     };
@@ -297,6 +304,23 @@ std::string http_post(const std::wstring& url, const wchar_t* content_type, std:
 }
 
 bool binary_updates_enabled() noexcept { return launcher_binary_updates; }
+bool updates_allowed(bool preference,bool no_update_argument) noexcept {
+    return binary_updates_enabled() && preference && !no_update_argument;
+}
+bool launcher_update_needed(bool relaunched,const fs::path& self,const RemoteFile& file) {
+    return !relaunched && !file.url.empty() && !file_matches(self,file);
+}
+
+namespace {
+bool merged_channel() { return std::wstring_view(launcher_release_repo)==L"Jish2637/ReSkateMerge"; }
+bool merged_download(std::wstring_view url) {
+    return url.starts_with(L"https://github.com/Jish2637/ReSkateMerge/releases/download/");
+}
+void require_merged_binary(const RemoteFile& file,std::wstring_view asset) {
+    if(file.version.empty() || (file.url!=L"asset:"+std::wstring(asset) && !merged_download(file.url)))
+        fail("ReSkateMerge binary updates must use assets from Jish2637/ReSkateMerge");
+}
+}
 
 Config parse_config(std::string_view text) {
     const auto root = Json::parse(text, JsonLimits{max_config_bytes, 8, 4096});
@@ -306,6 +330,10 @@ Config parse_config(std::string_view text) {
     Config config;
     config.launcher = parse_file(root, "launcher", false);
     config.runtime = parse_file(root, "runtime", false);
+    if(merged_channel()) {
+        require_merged_binary(config.launcher,L"ReSkateLauncher.exe");
+        require_merged_binary(config.runtime,L"ReSkate.dll");
+    }
     config.depot_downloader = parse_file(root, "depot_downloader", true);
     config.server = parse_file(root, "server", false);
     if (!config.server.url.empty()) {
@@ -404,6 +432,7 @@ std::optional<Config> fetch_config(bool prereleases) {
                 assets[asset.value("name", "")] = widen(asset.value("browser_download_url", ""));
         const auto manifest = assets.find("launcher.json");
         if (manifest == assets.end()) fail("The release has no launcher.json asset");
+        if(merged_channel() && !merged_download(manifest->second)) fail("ReSkateMerge manifest is outside its release repository");
         std::string json;
         http_get(manifest->second, max_config_bytes, 8000, [&](const char* data, DWORD count) { json.append(data, count); });
         auto config = parse_config(json);
@@ -414,6 +443,15 @@ std::optional<Config> fetch_config(bool prereleases) {
             file->url = found->second;
         }
         config.tag = release.value("tag_name", "");
+        if(merged_channel()) {
+            require_merged_binary(config.launcher,L"ReSkateLauncher.exe");
+            require_merged_binary(config.runtime,L"ReSkate.dll");
+            if(config.tag!="v"+config.launcher.version || config.tag!="v"+config.runtime.version)
+                fail("ReSkateMerge release tag and binary versions disagree");
+            const auto base=L"https://github.com/Jish2637/ReSkateMerge/releases/download/"+widen(config.tag)+L"/";
+            if(config.launcher.url!=base+L"ReSkateLauncher.exe" || config.runtime.url!=base+L"ReSkate.dll")
+                fail("ReSkateMerge binaries must belong to the selected release");
+        }
         config.prerelease = release.value("prerelease", false);
         config.prerelease_available = chosen.prerelease_available;
         logging::log(logging::Level::info, logging::Channel::launcher,
@@ -565,6 +603,8 @@ bool file_matches(const fs::path& path, const RemoteFile& file) {
 }
 
 fs::path download_verified(const fs::path& target, const RemoteFile& file, const Progress& progress) {
+    if(merged_channel() && (target.filename()==L"ReSkate.dll" || target.filename()==L"ReSkateLauncher.exe") && !merged_download(file.url))
+        fail("Refusing a binary update outside Jish2637/ReSkateMerge");
     const fs::path temporary = target.wstring() + L".new";
     DeleteFileW(temporary.c_str());
     logging::write(logging::Level::info, logging::Channel::launcher,
