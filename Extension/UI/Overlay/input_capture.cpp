@@ -1,4 +1,5 @@
 #include "Extension/Skater/FirstPerson/native_stick_filter.h"
+#include "Extension/Skater/FirstPerson/direct_button_filter.h"
 #include "Engine/Core/Log/logging.h"
 #include "overlay_internal.h"
 #include "input_capture.h"
@@ -35,6 +36,7 @@ bool block_polled_input() {
     const auto error = GetLastError();
     const bool capture = !overlay_input_access && (owns_menu_cursor(state()) || state().freecam_controller_active.load(std::memory_order_relaxed) ||
                                                     state().prompt_input_active.load(std::memory_order_relaxed));
+    if(capture) first_person_integration::reset_input_buttons();
     SetLastError(error);
     return capture;
 }
@@ -62,7 +64,7 @@ struct InputCaptureHooks {
     // describe callable addresses, not the CreateDevice interface index.
     static constexpr std::size_t device_slots = 8;
     std::array<Hook, device_slots> device_state, device_data, device_format;
-    struct Format { DWORD size{}; std::vector<DIOBJECTDATAFORMAT> objects; };
+    struct Format { DWORD size{}; std::vector<DIOBJECTDATAFORMAT> objects; first_person_integration::DirectButtonFilter buttons; };
     std::mutex formats_mutex;
     std::map<void*, Format> formats;
 };
@@ -186,7 +188,7 @@ void handle_hid(const InputCaptureHooks::HidRead& read, DWORD size) noexcept {
             if (capture) neutral_hid(item, length);
             else {
                 filter_hid(item, length);
-                if (!overlay_input_access) first_person_integration::filter_stick_report(item.kind, report);
+                if (!overlay_input_access) first_person_integration::filter_stick_report(item.kind, report,reinterpret_cast<std::uintptr_t>(item.file));
             }
         });
     static std::atomic<bool> reported_batch{};
@@ -447,7 +449,7 @@ void filter_raw_stick(RAWINPUT& raw,std::size_t size) {
     const auto kind=playstation_pad(static_cast<std::uint16_t>(info.hid.dwVendorId),static_cast<std::uint16_t>(info.hid.dwProductId));
     if(kind==PlayStationPad::none) return;
     for(DWORD i=0;i<count;++i)
-        first_person_integration::filter_stick_report(kind,{raw.data.hid.bRawData+static_cast<std::size_t>(i)*stride,stride});
+        first_person_integration::filter_stick_report(kind,{raw.data.hid.bRawData+static_cast<std::size_t>(i)*stride,stride},reinterpret_cast<std::uintptr_t>(raw.header.hDevice),2);
 }
 UINT WINAPI captured_raw_data(HRAWINPUT input, UINT command, LPVOID data, PUINT size, UINT header_size) {
     const auto result = original<UINT(WINAPI*)(HRAWINPUT, UINT, LPVOID, PUINT, UINT)>(
@@ -735,6 +737,35 @@ HRESULT STDMETHODCALLTYPE captured_device_format(void* device, const DIDATAFORMA
         InputCaptureHooks::Format copy;
         copy.size = format->dwDataSize;
         for (DWORD i = 0; i < format->dwNumObjs; ++i) copy.objects.push_back(format->rgodf[i]);
+        // The upstream blocker identifies Sony HID usages rather than assuming
+        // every DirectInput gamepad uses the same button/POV offsets.
+        OverlayInputAccess access;
+        auto** table=*reinterpret_cast<void***>(device);
+        using Property=HRESULT(STDMETHODCALLTYPE*)(void*,REFGUID,DIPROPHEADER*);
+        using Object=HRESULT(STDMETHODCALLTYPE*)(void*,void*,DWORD,DWORD);
+        DIPROPDWORD identity{};identity.diph={sizeof(identity),sizeof(identity.diph),0,DIPH_DEVICE};
+        if(SUCCEEDED(reinterpret_cast<Property>(table[5])(device,DIPROP_VIDPID,&identity.diph)) &&
+            playstation_pad(LOWORD(identity.dwData),HIWORD(identity.dwData))!=PlayStationPad::none) {
+            unsigned shoulders{},povs{};
+            for(const auto& field:copy.objects) {
+                DIDEVICEOBJECTINSTANCEW wide{};wide.dwSize=sizeof(wide);
+                WORD usage{},page{};DWORD type{};
+                if(SUCCEEDED(reinterpret_cast<Object>(table[14])(device,&wide,field.dwOfs,DIPH_BYOFFSET))) {usage=wide.wUsage;page=wide.wUsagePage;type=wide.dwType;}
+                else {
+                    DIDEVICEOBJECTINSTANCEA narrow{};narrow.dwSize=sizeof(narrow);
+                    if(FAILED(reinterpret_cast<Object>(table[14])(device,&narrow,field.dwOfs,DIPH_BYOFFSET))) continue;
+                    usage=narrow.wUsage;page=narrow.wUsagePage;type=narrow.dwType;
+                }
+                constexpr std::uint32_t masks[]{0,0x4000,0x1000,0x2000,0x8000,0x100,0x200,0x10000,0x20000,0x20,0x10,0x40,0x80};
+                const bool pov=(type&DIDFT_POV)!=0 && page==1 && usage==0x39;
+                const auto mask=(type&DIDFT_BUTTON)!=0 && page==9 && usage<std::size(masks) ? masks[usage]:0u;
+                if(!pov && !mask) continue;
+                if(field.dwOfs>=copy.size || (pov && copy.size-field.dwOfs<4)) continue;
+                copy.buttons.fields.push_back({field.dwOfs,mask,pov});
+                shoulders|=mask&0x300;povs+=pov;
+            }
+            if(shoulders!=0x300 || povs!=1) copy.buttons.fields.clear();
+        }
         std::lock_guard lock(input_hooks().formats_mutex);
         input_hooks().formats[device] = std::move(copy);
     }
@@ -750,6 +781,7 @@ HRESULT STDMETHODCALLTYPE captured_device_state(void* device, DWORD size, LPVOID
         std::lock_guard lock(input_hooks().formats_mutex);
         const auto found = input_hooks().formats.find(device);
         if (found != input_hooks().formats.end() && found->second.size == size) {
+            found->second.buttons.reset();
             for (const auto& object : found->second.objects) {
                 if (object.dwOfs > size || size - object.dwOfs < 4) continue;
                 DWORD neutral = 0;
@@ -778,6 +810,16 @@ HRESULT STDMETHODCALLTYPE captured_device_state(void* device, DWORD size, LPVOID
                 std::memcpy(bytes + offset, &released_pov, sizeof(released_pov));
         }
     }
+    if(SUCCEEDED(result) && data && !overlay_input_access && !block_polled_input()) {
+        std::lock_guard lock(input_hooks().formats_mutex);
+        const auto found=input_hooks().formats.find(device);
+        if(found!=input_hooks().formats.end() && found->second.size==size && !found->second.buttons.fields.empty()) {
+            found->second.buttons.sync(first_person_integration::input_button_generation());
+            found->second.buttons.state({static_cast<std::uint8_t*>(data),size},[&](std::uint32_t buttons) {
+                return first_person_integration::filter_buttons(3,reinterpret_cast<std::uintptr_t>(device),buttons);
+            });
+        }
+    }
     return result;
 }
 template<std::size_t I>
@@ -786,6 +828,16 @@ HRESULT STDMETHODCALLTYPE captured_device_data(void* device, DWORD size, LPDIDEV
     const auto result = original<HRESULT(STDMETHODCALLTYPE*)(void*, DWORD, LPDIDEVICEOBJECTDATA, LPDWORD, DWORD)>(
         input_hooks().device_data[I])(device, size, data, count, capture ? flags & ~DIGDD_PEEK : flags);
     if (SUCCEEDED(result) && capture && count) *count = 0;
+    if(SUCCEEDED(result) && !capture && !overlay_input_access && data && count && size==sizeof(DIDEVICEOBJECTDATA)) {
+        std::lock_guard lock(input_hooks().formats_mutex);
+        const auto found=input_hooks().formats.find(device);
+        if(found!=input_hooks().formats.end() && !found->second.buttons.fields.empty()) {
+            found->second.buttons.sync(first_person_integration::input_button_generation());
+            for(DWORD i=0;i<*count;++i) data[i].dwData=found->second.buttons.event(data[i].dwOfs,data[i].dwData,data[i].dwTimeStamp,data[i].dwSequence,[&](std::uint32_t buttons,std::uint32_t time) {
+                return first_person_integration::filter_buttons(3,reinterpret_cast<std::uintptr_t>(device),buttons,time);
+            });
+        }
+    }
     return result;
 }
 bool install_device_capture(void* device) {

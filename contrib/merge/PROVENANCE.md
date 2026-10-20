@@ -41,3 +41,31 @@ Integration adaptations:
 GPL-3.0 and original attribution remain in the source tree. Historical branch and
 ZIP documents describe their original builds; this file and the root README
 describe the combined build. No original upstream repository was modified.
+
+## First-person update in merged.5
+
+Selectively ported the requested features from Jish2637/JishsFirstPersonMod
+1.36.2, fetched on 2026-10-20 at
+`fe80fa7bf53d69ef0c2a6121802f76ae2c36f068`. The original native integration
+reference remains `974e91e05b622c5b4b7ea0b78e09be0f18c8edb3`.
+
+- Imported the native-head-look eligibility policy and saved boolean, adapted to
+  the native JSON settings, profile command and existing ImGui menu. Default OFF;
+  camera-only/compatibility eligibility matches upstream. No head bone writes,
+  new native hooks, camera math changes or multiplayer protocol changes.
+- Imported the glance double-tap and toggle hold-latch policy with vendor types
+  namespaced. The native action binding is the sole toggle owner. Suppression
+  covers entry and exit without a second companion activation path.
+- Adapted the policy to this client's existing XInput, per-report Sony HID,
+  Raw Input and verified Sony DirectInput state/buffered readers. DirectInput
+  object usages, VID/PID and offsets are checked before selective POV edits.
+  Private readers bypass filtering, while menu/focus/context invalidations clear
+  latches. Toggle latches survive camera transitions and producer stalls.
+- Retained merged.3 USB batching/Steam metadata reentrancy protection and merged.4
+  S.K.A.T.E. teardown. The standalone loader, address contracts, updater, MSC
+  integration and unrelated marker reset changes were not imported.
+
+Upstream SHA-256 references:
+`src/native_head_look.h`: `4604b3c9cc807561fbaf0f8a1d25420a62a93f505978fb3722a6ec53bf99f73f`;
+`src/glance_emote_policy.h`: `a3479376cfb90daf01058b2dde3bf7f80c6ff7a20ed335e092735f10634f5e35`.
+Original GPL licensing and attribution remain intact.

@@ -6,7 +6,7 @@ in the private [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerg
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.0-merged.4-Windows-x64.zip` from this repository's
+1. Download `ReSkateMerge-v0.1.0-merged.5-Windows-x64.zip` from this repository's
    private release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
@@ -34,6 +34,20 @@ See [controller fix](contrib/merge/CONTROLLER_FIX.md).
 `v0.1.0-merged.4` clears active S.K.A.T.E. trick restrictions on match completion,
 quitting, host closure, disconnects and world/session teardown. Saved setup options
 remain available for the next match; native trick handling resumes outside it.
+
+`v0.1.0-merged.5` adds the selected First Person Mod 1.36.2 features: optional
+native head movement during on-foot camera-only right-stick look, and glance /
+first-person entry/exit emote protection. Under **INS > Skater > First Person >
+Advanced > Off-board right-stick look**, enable **Native head movement** with
+on-foot right-stick look enabled and **Camera only** selected. It defaults off,
+saves in settings and personal presets, and changes camera feel. Camera and
+character mode and on-board look retain their existing input behavior.
+
+Bound L1/LB + D-pad glances suppress the game's emote on the first press; a
+deliberate double tap within 250 ms while holding L1/LB forwards the emote.
+The first-person toggle always suppresses its D-pad emote when entering or
+leaving first person, including when the shoulders are released before D-pad.
+Unrelated controls and the physical shortcut reader remain available.
 
 ## Build and verify
 

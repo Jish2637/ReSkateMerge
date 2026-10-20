@@ -1,11 +1,11 @@
-# ReSkateMerge v0.1.0-merged.4 validation
+# ReSkateMerge v0.1.0-merged.5 validation
 
 Built on Windows x64 with Visual Studio 2026, MSVC 19.51.36247, Windows SDK
 10.0.26100.0 and CMake 4.3.1. Release build with the `vs2026-x64` /
 `merged-release` presets succeeded. Launcher automatic binary updates are
 compiled off; the multiplayer protocol remains 52.
 
-CTest: **104 passed, 0 failed, 1 skipped**, out of 105 selected tests. The
+CTest: **105 passed, 0 failed, 1 skipped**, out of 106 selected tests. The
 installed-game-only `trainer_tuning_names` check skips because
 `DINGOSDK_TEST_GAME_ROOT` is unset. Set that CMake cache path to a supported game
 installation to run it; invalid explicitly configured game data remains a failure.
@@ -13,6 +13,19 @@ Other tests that optionally read game assets exercised their synthetic fixtures.
 
 Coverage includes:
 
+- First Person Mod 1.36.2 native head movement: default OFF for old settings,
+  live stick-settings commands, JSON save/reload and personal preset round trips;
+  camera-only passthrough, immediate restoration of capture when disabled,
+  camera-and-character exclusion and compatibility mode's camera-only behavior.
+- Native glance/toggle emote protection: selective first-tap suppression,
+  deliberate 250 ms glance double taps, shoulder-first release, entry/exit,
+  producer stalls, separate controller sources, stale glance expiry and
+  world/device/menu/focus resets. Sony DS4/DualSense USB/Bluetooth edits retain
+  shoulders, face buttons, axes and CRCs, including three-report USB completions.
+  DirectInput state and buffered reads preserve unrelated fields; repeated peek
+  events do not advance policy, world changes discard old events and buffered
+  tap timing uses event timestamps. Runtime refreshes toggle eligibility in
+  third person independently of opening the menu.
 - S.K.A.T.E. lifecycle regressions with flips, grabs, grinds and ground tricks
   disabled across completion, quit, host closure, disconnect, world/session
   changes and leaving the playable world. Repeated teardown, delayed start/turn
@@ -59,3 +72,10 @@ refresh/restoration, rule persistence across restarts, Pop-Shuvit → Shuv and
 held 360 → 3 Shuv with Capture Last, combo rows, and multiplayer ownership/matching.
 For merged.4, finish or cancel a match with grinds disabled and immediately grind
 in free skate without restarting; repeat after quitting or disconnecting.
+For merged.5, enable Native head movement in camera-only on-foot look and confirm
+the changed feel and visible head movement with another player. Verify OFF,
+camera-and-character mode and on-board look retain their prior behavior. Check
+saved settings and personal presets across restart, single-press glances versus
+double-tap emotes, and entering/exiting first person with shoulders released
+before D-pad. Repeat Insert/chat capture with the USB PS5 controller. These live
+checks remain pending; automated checks do not establish game/observer behavior.

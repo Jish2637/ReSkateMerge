@@ -889,6 +889,7 @@ void update_model(std::uintptr_t client, TickState& frame) {
         }
     }
     if (debug_request || r.debug_model.free_camera || r.debug_model.first_person || r.debug_model.drone_follow || r.debug_model.noclip ||
+        (action_combos[0] && dingosdk::first_person_integration::ready()) ||
         now >= r.next_debug) {
         ScheduledWorkScope work{r, debug_request.has_value()};
         r.next_debug = now + 100;

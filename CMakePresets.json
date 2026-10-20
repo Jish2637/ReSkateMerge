@@ -10,7 +10,7 @@
       "environment": { "VCLibPackagePath": "${sourceDir}/build/no-vcpkg/vcpkg.user" },
       "toolset": "v145",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "0.1.0-merged.4",
+        "DINGOSDK_VERSION": "0.1.0-merged.5",
         "DINGOSDK_LAUNCHER_AUTO_UPDATE": "OFF",
         "DINGOSDK_BUILD_TESTS": "OFF",
         "DINGOSDK_BUILD_FIRST_PERSON_HOST_TESTS": "ON",

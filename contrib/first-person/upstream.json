@@ -383,7 +383,8 @@
     "src/stock_hid_contract.h": "3ac3281a0ce96e3505aaa704bcd463a24dcdad53ebf4229c8a4ae49b235314cf",
     "src/user_data.h": "fc615b1b64be6d44954b3514f68e27a0c51151c3936d3d7330d523c4a8109e0c"
   },
-  "latest_audited_commit": "c0d2c4788fcbc1f970d4b3dc013a70f46b43bd6f",
+  "latest_audited_commit": "fe80fa7bf53d69ef0c2a6121802f76ae2c36f068",
+  "selective_update": "1.36.2 native head movement and glance/native-toggle blockers; see contrib/merge/PROVENANCE.md",
   "local_rebuild_branch": "JishFPMNative",
   "excluded_features": [
     "MSC presence",
@@ -395,7 +396,7 @@
     "DirectInput stick filtering",
     "original ReSkate camera mode"
   ],
-  "latest_checked_date": "2026-10-18",
+  "latest_checked_date": "2026-10-20",
   "reskate_base_tag": "v2.1.0",
   "reskate_base_commit": "ba1245a5af51892e90f2be8637dd69a7e20f5b77"
 }

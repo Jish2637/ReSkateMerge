@@ -21,5 +21,8 @@ inline bool filter_sony_stick(const StickCapture& capture,PlayStationPad kind,
 // Called only by the existing native game-facing input hooks, never raw readers.
 bool stick_filter_active() noexcept;
 void filter_stick(unsigned slot,overlay::GamepadValues& pad) noexcept;
-void filter_stick_report(PlayStationPad kind,std::span<std::uint8_t> report) noexcept;
+void filter_stick_report(PlayStationPad kind,std::span<std::uint8_t> report,std::uintptr_t source=0,unsigned path=1) noexcept;
+void reset_input_buttons() noexcept;
+std::uint32_t filter_buttons(unsigned path,std::uintptr_t source,std::uint32_t buttons,std::uint64_t input_time=0) noexcept;
+std::uint64_t input_button_generation() noexcept;
 }

@@ -3,6 +3,7 @@
 #include "Upstream/src/mod.h"
 #include "Upstream/src/camera_transition.h"
 #include "Upstream/src/camera_policy.h"
+#include "Upstream/src/native_head_look.h"
 #include "Extension/UI/Overlay/gameplay_controller.h"
 #include <algorithm>
 namespace dingosdk::first_person_integration {
@@ -110,7 +111,9 @@ public:
             auto settings=config.stick;settings.turn_character=turn;
             aim_=foot_.update(settings,axes,heading_ready_,input.device,context.time,heading_,
                 fpmod::matrix_heading(context.body),config.stick_spring,pitch_);
-            if(aim_.capture) capture_.modifier=~0u;
+            if(aim_.capture && !fpmod::native_head_look_passthrough(config.stick.native_head_look,
+                aim_.active,config.stick.enabled,config.look_only,config.stick.turn_character,turn_,
+                context.bail || context.getting_up)) capture_.modifier=~0u;
         }
         capture_.xinput_sources=input.device<=15 ? input.device:0;
         capture_.sony=input.style!=ControllerStyle::xbox;

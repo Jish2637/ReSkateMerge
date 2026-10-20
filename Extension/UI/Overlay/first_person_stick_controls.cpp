@@ -36,6 +36,9 @@ void first_person_stick_controls(SkateMenu& menu) {
     if(!stick.enabled) note("Off-board look is disabled. Tuning values remain editable.");
     field(menu,"Look mode");int mode=stick.turn_character ? 1:0;
     if(choice(menu,"foot-look-mode",mode,{"Camera only","Camera and character"},!config.look_only)) {stick.turn_character=mode==1;changed=true;}
+    ImGui::BeginDisabled(!stick.enabled || (!config.look_only && stick.turn_character));
+    changed=toggle_row(menu,"Native head movement","Lets Skate move your character's head when you use right-stick look on foot in Camera only mode, so other players can see you looking around. This changes how the camera feels. Turn it off to keep the previous camera feel. Does not apply to Camera and character or on-board look.",stick.native_head_look) || changed;
+    ImGui::EndDisabled();
     changed=slider(menu,"Horizontal sensitivity",stick.yaw_speed,1,720,"%.0f deg/s",fpmod::StickSettings{}.yaw_speed) || changed;
     changed=slider(menu,"Vertical sensitivity",stick.pitch_speed,1,720,"%.0f deg/s",fpmod::StickSettings{}.pitch_speed) || changed;
     changed=deadzone(menu,stick.deadzone,fpmod::StickSettings{}.deadzone) || changed;

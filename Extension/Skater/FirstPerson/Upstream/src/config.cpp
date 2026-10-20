@@ -127,6 +127,7 @@ Config read_config_text(const std::string& text) {
     cfg.board.center_pitch=number("board_center_pitch",0);
     cfg.stick.enabled=boolean("stick_look",false);
     cfg.stick.turn_character=boolean("stick_turn_character",false);
+    cfg.stick.native_head_look=boolean("stick_native_head_look",false);
     cfg.stick.invert_y=boolean("stick_invert_y",false);
     cfg.stick.yaw_speed=number("stick_yaw_speed",120);
     cfg.stick.pitch_speed=number("stick_pitch_speed",90);
@@ -232,6 +233,7 @@ std::string config_text(const Config& cfg,bool include_shared) {
             <<"\nstick_strength_up="<<stick_spring.up<<"\nstick_strength_down="<<stick_spring.down
             <<"\nstick_strength_left="<<stick_spring.left<<"\nstick_strength_right="<<stick_spring.right<<'\n';
         out<<"stick_look="<<cfg.stick.enabled<<"\nstick_turn_character="<<cfg.stick.turn_character
+            <<"\nstick_native_head_look="<<cfg.stick.native_head_look
             <<"\nstick_invert_y="<<cfg.stick.invert_y<<"\nstick_yaw_speed="<<cfg.stick.yaw_speed
             <<"\nstick_pitch_speed="<<cfg.stick.pitch_speed<<"\nstick_deadzone="<<cfg.stick.deadzone<<'\n';
         out<<"smooth_transitions="<<cfg.stick.smooth_transitions<<"\nmount_smoothing="<<cfg.stick.mount_smoothing

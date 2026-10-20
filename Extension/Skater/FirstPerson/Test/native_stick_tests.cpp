@@ -66,6 +66,15 @@ int main() { try {
     check(!runtime.motion(4,3,foreign,context.tick+101),"Expired character turn survived");
     config.stick.turn_character=false;step(.42,0);body=identity;
     check(!runtime.motion(4,3,body,context.tick),"Camera-only mode still turned the character");
+    config.stick.native_head_look=true;step(.421,0,15000);
+    check(runtime.aim().active && !runtime.capture().modifier,"Native head movement still suppressed physical right stick");
+    config.stick.native_head_look=false;step(.422,0,15000);
+    check(runtime.capture().modifier==~0u,"Disabling native head movement failed to restore capture");
+    config.stick.native_head_look=true;config.stick.turn_character=true;step(.423,0,15000);
+    check(runtime.capture().modifier==~0u,"Native head movement escaped camera-only mode");
+    config.look_only=true;step(.424,0);step(.425,0,15000);
+    check(!runtime.capture().modifier && !runtime.turning(),"Compatibility mode did not use effective camera-only policy");
+    config.look_only=false;config.stick.native_head_look=false;
     context.eligible=false;step(.43,0);check(!runtime.capture().modifier,"Bail/mounting eligibility did not release native input");
     // Recovery must retain the same away-from-body recenter request as dismount.
     runtime.reset();config.stick.turn_character=true;context.on_foot=true;context.eligible=true;context.bail=false;

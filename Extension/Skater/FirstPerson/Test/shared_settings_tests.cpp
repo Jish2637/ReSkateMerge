@@ -21,6 +21,8 @@ int main(int argc,char** argv) { try {
     const auto extra=read_config_text("stick_yaw_speed=390\nstick_pitch_speed=363\nunused_option=1\n");
     check(extra.stick.yaw_speed==390 && extra.stick.pitch_speed==363,"Unrecognized field blocked or reset recognized preferences");
     Config original;original.board.enabled=true;original.board.continue_auto_center=false;
+    check(!original.stick.native_head_look && !read_config_text("stick_look=1\n").stick.native_head_look,"Legacy head movement default changed");
+    original.stick.native_head_look=true;
     original.board.yaw_speed=401;original.board.pitch_speed=381;original.disable_spring_on_foot=true;
     original.spectator_first_person=true;original.third_person_bailing=true;original.third_person_recovery=true;
     original.bail_camera_collision=false;
@@ -44,12 +46,14 @@ int main(int argc,char** argv) { try {
     for(const char* key:{"lock_body_flips","lock_camera_mount_jump","lock_camera_hippy_jump","look_during_parkour","glance_emote_coordination"})
         check(!document->at("options").contains(key),"Excluded feature was serialized");
     const auto live=read_config(directory/"settings.json");
+    check(live.stick.native_head_look,"Native head movement did not survive settings save");
     check(live.spectator_first_person && live.third_person_bailing && live.third_person_recovery && !live.bail_camera_collision,"Accepted feature preferences did not round trip");
     check(live.look[0].angle==47 && live.board.yaw_speed==401 && live.board.pitch_speed==381 &&
         live.board.enabled && !live.board.continue_auto_center && live.disable_spring_on_foot,"Add-on settings did not round trip");
     check(!live.glances_enabled && live.remember_marker_glance && !live.stick.smooth_transitions && live.stick.mount_smoothing==63 && live.stick.dismount_smoothing==42,"Live preferences lost marker/transition settings");
     PresetLibrary library(directory/"presets");library.save("Snapshot",saved.config);
     const auto profile=library.load("Snapshot");
+    check(profile.stick.native_head_look,"Native head movement missing from preset");
     check(profile.camera==native,"Profile lost native stabilization/head-motion/camera-cycle values");
     check(profile.spectator_first_person && profile.third_person_bailing && profile.third_person_recovery && !profile.bail_camera_collision,"Accepted features missing from named profile");
     check(profile.fov==100 && profile.spring.enabled && profile.on_board_only && profile.spring.offset==shared.offset &&
@@ -61,6 +65,10 @@ int main(int argc,char** argv) { try {
     command.kind=CommandKind::apply_preset;command.preset=profile;
     check(store.submit(command,2000) && store.snapshot(2000).config.camera==native,"Profile load failed to apply native camera snapshot");
     command.preset={};check(store.submit(command,2100),"Defaults request rejected");
+    check(!store.snapshot(2100).config.stick.native_head_look,"Legacy/default preset retained native head movement");
+    command.kind=CommandKind::stick_settings;command.stick=store.snapshot(2100).config.stick;
+    command.stick.native_head_look=true;check(store.submit(command,2200),"Native head movement command rejected");
+    store.flush_due(4000);check(read_config(directory/"settings.json").stick.native_head_look,"Menu command did not persist native head movement");
     check(store.snapshot(2100).config.camera==NativeCameraOptions{} && !store.snapshot(2100).config.board.enabled,"Reset did not restore defaults");
     std::cout<<"Native ownership and profile round trips passed\n";return 0;
 } catch(const std::exception& e) { std::cerr<<e.what();return 1; } }

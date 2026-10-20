@@ -161,6 +161,15 @@
     "upstream_sha256": "7e47f1dbefe992b0a7f3478ae62e5c7b3811284fdfb9bfa4f632baf90b7f4026",
     "native_asset": "recommended.json"
   },
-  "latest_audited_commit": "c0d2c4788fcbc1f970d4b3dc013a70f46b43bd6f",
-  "latest_checked_date": "2026-10-18"
+  "latest_audited_commit": "fe80fa7bf53d69ef0c2a6121802f76ae2c36f068",
+  "latest_checked_date": "2026-10-20",
+  "selective_update": {
+    "version": "1.36.2",
+    "scope": "Native head look setting/policy and glance/native-toggle emote blockers; existing native integration retained.",
+    "upstream_files": {
+      "src/native_head_look.h": "4604b3c9cc807561fbaf0f8a1d25420a62a93f505978fb3722a6ec53bf99f73f",
+      "src/glance_emote_policy.h": "a3479376cfb90daf01058b2dde3bf7f80c6ff7a20ed335e092735f10634f5e35"
+    },
+    "provenance": "contrib/merge/PROVENANCE.md"
+  }
 }

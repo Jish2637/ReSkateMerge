@@ -6,6 +6,7 @@
 #include "glance_runtime.h"
 #include "Upstream/src/look_smoothing.h"
 #include "native_stick_filter.h"
+#include "native_button_filter.h"
 #include "native_action_bindings.h"
 #include "Upstream/src/bail_collision.h"
 #include "Engine/Core/Config/profile_config.h"
@@ -24,6 +25,7 @@ std::mutex bindings_mutex;
 dingosdk::ControllerBindingsModel native_bindings;
 std::mutex capture_mutex;
 dingosdk::first_person_integration::StickCapture stick_capture;
+dingosdk::first_person_integration::NativeButtonFilter button_filter;
 dingosdk::first_person_integration::RightStickRuntime right_stick;
 fpmod::Config live_config;
 dingosdk::first_person_integration::GlanceRuntime glance;
@@ -39,7 +41,7 @@ std::uintptr_t camera_owner{};
 double frame{};
 void publish_capture(const dingosdk::first_person_integration::StickCapture& value) {
     std::lock_guard lock(capture_mutex);stick_capture=value;
-    capture_active.store(value.modifier!=0 || value.watch_modifier!=0,std::memory_order_release);
+    capture_active.store(value.modifier!=0 || value.watch_modifier!=0 || button_filter.enabled(),std::memory_order_release);
 }
 void reset_locked() { glance.disarm_pose();smoothing.reset();right_stick.reset();publish_capture({});dingosdk::first_person_host::motion_enabled.store(false,std::memory_order_release);angles={};live=false;bail_collision.reset();camera_position_ready=false;bail_camera_active=previous_bail_camera=false;collision_return_until=0; }
 void sample_settings(dingosdk::first_person::Settings& settings, double now) noexcept {
@@ -190,7 +192,19 @@ void observe(const first_person::Settings& settings,float fov,bool active,bool a
         live_config=snapshot.config;on_foot=context.verified ? context.on_foot:foot.value_or(false);
         live_config.board.modifier=bindings.available ? bindings.action_combos[5]:0;
         bail_camera_active=context.bail && !snapshot.config.third_person_bailing;
-        angles=glance.step(native_glance.config,glance_controls,input,blocked,requested,context);
+        bool emote{};
+        {
+            std::lock_guard input_lock(capture_mutex);
+            auto physical_controls=native_glance.config.look;
+            for(unsigned i=0;i<4;++i) if(conflicts.glance[i]) physical_controls[i].combo=0;
+            button_filter.publish(physical_controls,bindings.available ? bindings.action_combos[0]:0u,
+                context.telemetry_valid && !context.teleport && input.available && bindings.available,
+                !blocked && requested && snapshot.config.glances_enabled,context.world_context,input.device,
+                input.style!=vendor::ControllerStyle::xbox,context.tick,context.owner);
+            emote=button_filter.forwarding(context.tick);
+        }
+        angles=glance.step(native_glance.config,glance_controls,input,blocked || emote,requested,context);
+        if(emote) {glance.disarm_pose();angles={};smoothing.reset();}
         if(!live_config.glances_enabled) {angles={};smoothing.reset();}
         auto controls=context;
         // Eligible=false still carries verified bail/mount handoffs to the camera policy.
@@ -203,20 +217,37 @@ void observe(const first_person::Settings& settings,float fov,bool active,bool a
     } catch(...) { reset(); }
 }
 bool stick_filter_active() noexcept { return capture_active.load(std::memory_order_acquire); }
+void reset_input_buttons() noexcept {
+    std::lock_guard lock(capture_mutex);button_filter.reset();
+}
+std::uint64_t input_button_generation() noexcept {
+    std::lock_guard lock(capture_mutex);return button_filter.generation();
+}
+std::uint32_t filter_buttons(unsigned path,std::uintptr_t source,std::uint32_t buttons,std::uint64_t input_time) noexcept {
+    struct PreserveError {DWORD value=GetLastError();~PreserveError(){SetLastError(value);}} error;
+    const auto foreground=GetForegroundWindow();DWORD pid{};
+    if(!foreground || !GetWindowThreadProcessId(foreground,&pid) || pid!=GetCurrentProcessId()) {reset_input_buttons();return 0;}
+    std::lock_guard lock(capture_mutex);
+    return button_filter.classify(path,source,buttons,GetTickCount64(),input_time).consume;
+}
 void filter_stick(unsigned slot,overlay::GamepadValues& pad) noexcept {
     if(slot>=4)return;
     struct PreserveError { DWORD value=GetLastError();~PreserveError(){SetLastError(value);} } error;
     const auto foreground=GetForegroundWindow();DWORD pid{};
-    if(!foreground || !GetWindowThreadProcessId(foreground,&pid) || pid!=GetCurrentProcessId()) return;
+    if(!foreground || !GetWindowThreadProcessId(foreground,&pid) || pid!=GetCurrentProcessId()) {reset_input_buttons();return;}
     std::lock_guard lock(capture_mutex);
     const auto now=GetTickCount64();
     auto capture=native_holds[slot].sample(stick_capture,pad,now);
     capture.apply(slot,pad,now);
+    auto buttons=std::uint32_t(pad.buttons);
+    if(pad.left_trigger>30) buttons|=0x10000;
+    if(pad.right_trigger>30) buttons|=0x20000;
+    pad.buttons=static_cast<std::uint16_t>(pad.buttons&~button_filter.classify(0,slot,buttons,now).consume);
 }
-void filter_stick_report(PlayStationPad kind,std::span<std::uint8_t> report) noexcept {
+void filter_stick_report(PlayStationPad kind,std::span<std::uint8_t> report,std::uintptr_t source,unsigned path) noexcept {
     struct PreserveError { DWORD value=GetLastError();~PreserveError(){SetLastError(value);} } error;
     const auto foreground=GetForegroundWindow();DWORD pid{};
-    if(!foreground || !GetWindowThreadProcessId(foreground,&pid) || pid!=GetCurrentProcessId()) return;
+    if(!foreground || !GetWindowThreadProcessId(foreground,&pid) || pid!=GetCurrentProcessId()) {reset_input_buttons();return;}
     const auto parsed=parse_playstation_report(kind,playstation_bluetooth(report.size()),report.data(),report.size());
     if(!parsed)return;
     const unsigned slot=kind==PlayStationPad::dualsense ? 5:4;
@@ -226,6 +257,7 @@ void filter_stick_report(PlayStationPad kind,std::span<std::uint8_t> report) noe
     const auto now=GetTickCount64();
     const auto capture=native_holds[slot].sample(stick_capture,raw,now);
     filter_sony_stick(capture,kind,report,now);
+    button_filter.filter_report(path,source,kind,report,now);
 }
 void observe_bindings(const ControllerBindingsModel& bindings) noexcept {
     if(!ready()) return;

@@ -5,6 +5,7 @@
 namespace jishsfirstpersonmod {
 struct StickSettings {
     bool enabled{},turn_character{},invert_y{};
+    bool native_head_look=false;
     float yaw_speed=120,pitch_speed=90,deadzone=.15f;
     bool smooth_transitions=true;
     float mount_smoothing=70,dismount_smoothing=35;
