@@ -1,3 +1,4 @@
+#include "skate_menu_internal.h"
 #include "Extension/Skater/FirstPerson/integration.h"
 #include "Engine/Core/Platform/launcher_support.h"
 #include "Engine/Core/Log/logging.h"
@@ -525,7 +526,7 @@ void draw_menu() {
         return;
     }
     s.editor_flight.store(false);
-    if (!s.visible.load()) return;
+    if (!s.visible.load()) { menu::close_msc_hub(); return; }
     bool visible = true;
     dingosdk::overlay::draw_skate_menu(s.menu, s.model, s.callbacks, visible);
     if (!visible) s.visible.store(false);

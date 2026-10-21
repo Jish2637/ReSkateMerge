@@ -215,6 +215,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI DingoSDKDebugInitialize() {
         dingosdk::multiplayer::set_native_menu_callbacks(native_callbacks);
         dingosdk::overlay::set_multiplayer_queue(queue_multiplayer_command);
         dingosdk::overlay::set_chat_feed(dingosdk::multiplayer::chat);
+        dingosdk::overlay::set_msc_feed(dingosdk::multiplayer::msc_feed);
         // A map a session needs: hosts say which Thunderstore package theirs is from, and a
         // guest without it is offered it on a card (Extension/Assets/map_download.h).
         dingosdk::multiplayer::set_map_package_lookup(dingosdk::map_download::package_of);

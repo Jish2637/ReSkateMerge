@@ -1,4 +1,5 @@
 #include "numeric_edit.h"
+#include "overlay_internal.h"
 #include "Engine/Core/Platform/launcher_support.h"
 #include "skate_menu_internal.h"
 #include "Extension/Skater/skate_host_preferences.h"
@@ -818,11 +819,11 @@ ImFont* embedded_font(const wchar_t* name, float size, const ImWchar* ranges) {
 }
 
 constexpr std::array<const char*, page_count> page_names{
-    "HOME", "MAP", "BUILD", "SKATER", "SANDBOX", "ADDONS", "ONLINE", "PROGRESS", "MODS", "SETTINGS", "DEVELOPER"};
+    "HOME", "MAP", "BUILD", "SKATER", "SANDBOX", "ADDONS", "ONLINE", "PROGRESS", "MODS", "SETTINGS", "DEVELOPER", "MSC HUB"};
 constexpr std::array<const char*, page_count> page_subtitles{
     "Everything, a button away.", "Pick your spot. Set the vibe.", "Make the park yours.", "Ride it your way.",
     "Tune it. Drill it.", "What ReSkate adds to skate.", "Bring your crew.", "Pick up where you want.",
-    "Bring your own.", "Your controls, your screen.", "Under the hood."};
+    "Bring your own.", "Your controls, your screen.", "Under the hood.", "MSC points and server shop."};
 constexpr std::array<const char*, addon_count> addon_names{"ADDONS", "DRONE", "BOARD BREAK", "ROAD RASH", "HALL OF MEAT", "GRIND EXITS", "MUSIC"};
 constexpr std::array<const char*, addon_count> addon_subtitles{
     "What ReSkate adds to skate.", "Take it to the sky.", "Slams snap your board.", "Bails leave their mark.", "Every bone counts.", "Pick the side you pop out.",
@@ -835,6 +836,7 @@ const char* group_of(int page) {
     case page_addons: return "EXTRAS";
     case page_online: return "CREW";
     case page_mods: return "SYSTEM";
+    case page_msc: return "CREW";
     default: return nullptr;
     }
 }
@@ -927,7 +929,7 @@ void brushed_title(ImDrawList* draw, SkateMenu& menu, ImVec2 at, const char* tex
 }
 
 // A controller button as the pad in use shows it: Xbox's coloured letters, or PlayStation's shapes
-// (drawn: the menu font has no ✕ ○ □ △), and the shoulders, triggers and middle buttons by name.
+// (drawn: the menu font has no âœ• â—‹ â–¡ â–³), and the shoulders, triggers and middle buttons by name.
 enum class Glyph { a, b, x, y, lb, rb, lt, rt, view, rs };
 float glyph(ImDrawList* draw, SkateMenu& menu, ImVec2 at, Glyph which, bool playstation) {
     const float size = px(22);
@@ -1011,6 +1013,96 @@ void skate_rules_page(SkateMenu& menu) {
 
 } // namespace menu
 namespace {
+// MSC hub uses only dedicated-server chat. No server changes or private protocol.
+struct MscReplies {
+    std::uint64_t seen{}, host{};
+    bool available{};
+    std::vector<std::string> lines;
+    void update(const MultiplayerChat& chat, std::uint64_t current_host) {
+        if (!chat.available) {
+            lines.clear(); seen = 0; host = 0; available = false;
+            return;
+        }
+        if (!available || current_host != host || chat.latest < seen) {
+            seen = chat.latest;
+            lines.clear();
+        }
+        available = true;
+        host = current_host;
+        for (const auto& line : chat.lines) {
+            if (line.sequence <= seen || !line.server || line.local) continue;
+            lines.push_back(line.text);
+            if (lines.size() > 35) lines.erase(lines.begin());
+        }
+        seen = chat.latest;
+    }
+};
+MscReplies msc_replies;
+void msc_hub_page(SkateMenu& menu, const Model& model, const CallbacksV3&) {
+    if (draw_msc_hub(menu, model)) return;
+    static int tab = 0;
+    static std::array<char, 128> tag{}, message{}, pay_target{}, pay_amount{};
+    if (!msc_replies.available) {
+        note("Chat is unavailable. Join your MSC server and enable chat to use this hub.");
+        return;
+    }
+    auto issue = [&](const std::string& command) {
+        if (command.size() > multiplayer_chat_max_bytes) {
+            feedback(menu, "MSC command is too long (maximum 200 bytes).");
+            return;
+        }
+        if (command.empty() || command[0] != '/' || command.find('\n') != std::string::npos || command.find('\r') != std::string::npos) return;
+        if (!detail::queue_multiplayer_action("chat", command))
+            feedback(menu, "MSC command could not be queued. Check your connection and try again.");
+    };
+    section(menu, "MSC SERVER HUB");
+    note("Use on your MSC server; MSC support is not detected automatically. Purchases, balances, rewards and permissions are controlled by the server.");
+    category_tabs(menu, tab, {"SHOP", "MY MSC", "ACTIVITIES", "UTILITIES"}, "msc-hub-tabs");
+    if (tab == 0) {
+        begin_card(menu, "msc-shop", "SHOP & COLLECTION", "Shop previews and purchases use existing MSC commands.");
+        if (ImGui::Button("Show shop")) issue("/shop");
+        // Separate rows avoid triggering multiple commands at once.
+        if (ImGui::Button("View owned tags")) issue("/tags");
+        ImGui::SameLine(); if (ImGui::Button("View shimmer effects")) issue("/shimmers");
+        ImGui::SameLine(); if (ImGui::Button("View colours")) issue("/colour");
+        ImGui::InputText("Tag text", tag.data(), tag.size());
+        if (ImGui::Button("Request tag (/tag)")) issue(std::string("/tag ") + tag.data());
+        ImGui::InputText("Join message", message.data(), message.size());
+        if (ImGui::Button("Request join message (/joinmsg)")) issue(std::string("/joinmsg set ") + message.data());
+        note("Choose an item from the server's shop listing first. Confirm only after reviewing the server's quote.");
+        if (ImGui::Button("Confirm pending purchase (/buy)")) issue("/buy");
+        end_card();
+    } else if (tab == 1) {
+        begin_card(menu, "msc-profile", "POINTS & PROGRESSION");
+        if (ImGui::Button("Balance")) issue("/bal");
+        ImGui::SameLine(); if (ImGui::Button("Stats")) issue("/stats");
+        ImGui::SameLine(); if (ImGui::Button("Leaderboard")) issue("/top");
+        if (ImGui::Button("Daily reward progress")) issue("/daily");
+        end_card();
+    } else if (tab == 2) {
+        begin_card(menu, "msc-activities", "SERVER ACTIVITIES");
+        note("Wagering commands work only when enabled by the MSC server.");
+        if (ImGui::Button("Coin Flip help/lobby")) issue("/coinflip");
+        ImGui::SameLine(); if (ImGui::Button("Dice help/lobby")) issue("/dice");
+        if (ImGui::Button("High / Low")) issue("/highlow");
+        end_card();
+    } else {
+        begin_card(menu, "msc-utilities", "PLAYER UTILITIES");
+        ImGui::InputText("Player", pay_target.data(), pay_target.size());
+        ImGui::InputText("MSC amount", pay_amount.data(), pay_amount.size(), ImGuiInputTextFlags_CharsDecimal);
+        if (ImGui::Button("Send MSC points") && pay_target[0] && pay_amount[0])
+            issue(std::string("/pay ") + pay_target.data() + " " + pay_amount.data());
+        note("Any moderation or admin commands remain accessible through existing chat permissions.");
+        end_card();
+    }
+    begin_card(menu, "msc-replies", "SERVER RESPONSES", "Dedicated-server messages only. Local command errors appear in normal chat.");
+    if (ImGui::Button("Clear responses")) msc_replies.lines.clear();
+    ImGui::BeginChild("msc-response-log", ImVec2(0, px(165)), ImGuiChildFlags_Borders);
+    for (const auto& line : msc_replies.lines) ImGui::TextWrapped("%s", line.c_str());
+    ImGui::EndChild();
+    end_card();
+}
+
 void draw_page_body(SkateMenu& menu, const Model& model, const CallbacksV3& callbacks) {
     switch (menu.page) {
     case page_home: home_page(menu, model, callbacks); break;
@@ -1048,6 +1140,7 @@ void draw_page_body(SkateMenu& menu, const Model& model, const CallbacksV3& call
         break;
     case page_settings: settings_page(menu, model, callbacks); break;
     case page_developer: developer_page(menu, model, callbacks); break;
+    case page_msc: msc_hub_page(menu, model, callbacks); break;
     }
     if (menu.rail_indent > 0) {
         ImGui::Unindent(menu.rail_indent);
@@ -1361,6 +1454,10 @@ void menu_sounds(bool page_makes_its_own) {
 
 void draw_skate_menu(SkateMenu& menu, const Model& model, const CallbacksV3& callbacks,
                      bool& visible) {
+    // Poll even on other pages so an observed disconnect clears the hub history.
+    const auto feed_fn = get_chat_feed();
+    msc_replies.update(feed_fn ? feed_fn() : MultiplayerChat{}, model.multiplayer.host_id);
+    if (!visible || menu.page != page_msc) close_msc_hub();
     menu::tab_switched = false;
     const bool on_controls = menu.page == page_settings && menu.settings_tab == 0;
     const bool on_voice = menu.page == page_online && menu.multiplayer_tab == multiplayer_voice_tab;

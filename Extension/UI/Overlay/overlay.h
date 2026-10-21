@@ -1,3 +1,4 @@
+#include "Engine/Game/Multiplayer/msc_interface.h"
 #pragma once
 #include "Engine/Game/World/park_rotation.h"
 #include "Engine/Game/World/park_editor.h"
@@ -389,6 +390,9 @@ void map_vote_dismiss() noexcept;
 // The session's text chat, read by the chat panel every frame (thread-safe, cheap).
 using ChatFeed = MultiplayerChat (*)();
 void set_chat_feed(ChatFeed) noexcept;
+ChatFeed get_chat_feed() noexcept;
+using MscFeed = msc::Feed (*)();
+void set_msc_feed(MscFeed) noexcept;
 // The game's pause menu, as far as ReSkate's own pages in it go: whether one of them is the
 // page on screen, and which (`section` 0: Multiplayer, 1: Mod Options). The overlay draws
 // everything in such a page itself, its tabs too (hub_page.cpp). Read every presented frame

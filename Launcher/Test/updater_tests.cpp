@@ -56,6 +56,15 @@ void live(const fs::path& root) {
 }
 }
 int main(int argc,char** argv) {try {
+    if(argc==4 && std::string_view(argv[1])=="--server-archive") {
+        const fs::path archive=argv[2],folder=argv[3];fs::create_directories(folder);
+        write(folder/"ReSkateServer.json","preserved server settings");write(folder/"data/player-stats.json","preserved wallet data");
+        const auto expected=update::archive_entry_sha256(archive,"ReSkateServer.exe");
+        update::install_archive(archive,folder);
+        check(dingosdk::launcher::sha256_file(folder/"ReSkateServer.exe")==expected,"Server archive installed wrong executable");
+        check(read(folder/"ReSkateServer.json")=="preserved server settings" && read(folder/"data/player-stats.json")=="preserved wallet data","Server update replaced user data");
+        std::cout<<"Server archive installation, executable hash and existing data preservation passed\n";return 0;
+    }
     if(argc==3 && std::string_view(argv[1])=="--self-fixture") {self_fixture(argv[2]);return 0;}
     if(argc==3 && std::string_view(argv[1])=="--live") {live(argv[2]);return 0;}
     check(argc==3,"Expected base manifest and fixture folder");const fs::path root=fs::path(argv[2])/std::to_wstring(GetCurrentProcessId());fs::create_directories(root);
@@ -99,6 +108,9 @@ int main(int argc,char** argv) {try {
     check(!update::fetch_config(),"Mismatched release tag accepted");
     auto missing=release(stable);missing["assets"]=Json::array();responses[std::wstring(repo)+L"/releases?per_page=10"]=Json::array({missing}).dump();responses.erase(std::wstring(repo)+L"/releases/latest");
     check(!update::fetch_config(),"Missing manifest fell back to upstream");
+    auto server_manifest=manifest(stable);auto server=server_manifest.at("runtime");server["version"]="2.1.2";server["url"]="https://github.com/Jish2637/ReSkateMerge/releases/download/v0.1.3/ReSkateServer-v2.1.2-Windows-x64.zip";server["exe_sha256"]=server.at("sha256");server_manifest["server"]=server;
+    check(update::parse_config(server_manifest.dump()).server.version=="2.1.2","Independent server version rejected");
+    server_manifest["server"]["exe_sha256"]="invalid";rejects([&]{update::parse_config(server_manifest.dump());},"Invalid server executable hash accepted");
     const auto restart=root/"restart";fs::create_directories(restart);fs::copy_file(self(),restart/"ReSkateLauncher.exe");write(restart/"replacement.bin",read(root/"launcher.bin"));
     std::wstring command=L"\""+(restart/"ReSkateLauncher.exe").wstring()+L"\" --self-fixture \""+restart.wstring()+L"\"";
     STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION child{};

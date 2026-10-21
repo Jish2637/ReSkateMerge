@@ -230,6 +230,7 @@ if(WIN32)
         Extension/Multiplayer/Remote/playback_buffers.cpp Extension/Multiplayer/Session/password.cpp
         Server/server_activity.cpp Server/server_votes.cpp Server/server_commands.cpp Server/server_parks.cpp Extension/Throwdowns/throwdown_wire.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/generated/launcher_resources.rc")
+    target_sources(dingosdk_server PRIVATE Server/msc_features.cpp Server/msc_interface.cpp Server/msc_expansion.cpp Server/shop.cpp Server/player_stats.cpp Server/server_player_stats.cpp Server/server_object_moderation.cpp Server/object_audit.cpp Server/server_builds.cpp)
     target_include_directories(dingosdk_server SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/External/steam_networking")
     target_link_libraries(dingosdk_server PRIVATE dingosdk_launcher_support dingosdk_world_layer_scan dingosdk_json
         dingosdk_lz4 dingosdk_zstd dingosdk_logging dingosdk_miniz dingosdk_word_filter dingosdk_https winhttp bcrypt winmm
@@ -246,6 +247,7 @@ else()
         Extension/Multiplayer/Net/delta_codec.cpp Extension/Multiplayer/Net/wire_codec.cpp
         Extension/Multiplayer/Remote/playback_buffers.cpp Extension/Multiplayer/Session/password.cpp
         Server/server_activity.cpp Server/server_votes.cpp Server/server_commands.cpp Server/server_parks.cpp Extension/Throwdowns/throwdown_wire.cpp)
+    target_sources(dingosdk_server PRIVATE Server/msc_features.cpp Server/msc_interface.cpp Server/msc_expansion.cpp Server/shop.cpp Server/player_stats.cpp Server/server_player_stats.cpp Server/server_object_moderation.cpp Server/object_audit.cpp Server/server_builds.cpp)
     target_include_directories(dingosdk_server SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/External/steam_networking")
     target_link_libraries(dingosdk_server PRIVATE dingosdk_launcher_support dingosdk_world_layer_scan dingosdk_json
         dingosdk_lz4 dingosdk_zstd dingosdk_miniz dingosdk_word_filter OpenSSL::Crypto dl pthread)

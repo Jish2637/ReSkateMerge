@@ -41,6 +41,14 @@ def main():
             'SHA256SUMS.txt':output/f'SHA256SUMS-{tag}.txt',
             'launcher.json':manifest_path,
             'ReSkateLauncher.exe':stage/'ReSkateLauncher.exe','ReSkate.dll':stage/'ReSkate.dll'}
+    server_version=manifest['server']['version']
+    server_stage=output/('server-v'+server_version)
+    server_archive=output/f'ReSkateServer-v{server_version}-Windows-x64.zip'
+    assets[server_archive.name]=server_archive;assets['ReSkateServer.exe']=server_stage/'ReSkateServer.exe'
+    with zipfile.ZipFile(server_archive) as archive:
+        assert archive.read('ReSkateServer.exe')==assets['ReSkateServer.exe'].read_bytes()
+        assert json.loads(archive.read('BUILD_INFO.json'))['source_commit']==sha
+        assert manifest['server']=={'version':server_version,'url':'asset:'+server_archive.name,'sha256':hashlib.sha256(server_archive.read_bytes()).hexdigest(),'size':server_archive.stat().st_size,'exe_sha256':hashlib.sha256(assets['ReSkateServer.exe'].read_bytes()).hexdigest()}
     with zipfile.ZipFile(next(path for name,path in assets.items() if name.endswith('.zip'))) as archive:
         assert json.loads(archive.read('BUILD_INFO.json'))==metadata
         for key,name in (('launcher','ReSkateLauncher.exe'),('runtime','ReSkate.dll')):

@@ -427,6 +427,8 @@ std::vector<std::uint8_t> encode(const Packet &p, bool compact_pose, std::uint32
         throw std::invalid_argument("Invalid drone packet");
     if (p.kind == PacketKind::chat && (!p.source || !valid_chat_text(p.text)))
         throw std::invalid_argument("Invalid chat message");
+    if (p.kind == PacketKind::msc && (!p.source || p.text.empty() || p.text.size() > 16384 || p.text.find('\0') != std::string::npos))
+        throw std::invalid_argument("Invalid MSC payload");
     if (p.kind == PacketKind::typing && !p.source)
         throw std::invalid_argument("Invalid typing notice");
     if (p.kind == PacketKind::admin && (!p.source || !valid_admin_text(p.text)))
@@ -501,7 +503,7 @@ std::vector<std::uint8_t> encode(const Packet &p, bool compact_pose, std::uint32
         p.kind != PacketKind::party && p.kind != PacketKind::scoring && p.kind != PacketKind::physics_extras &&
         p.kind != PacketKind::effects && p.kind != PacketKind::permissions && p.kind != PacketKind::words &&
         p.kind != PacketKind::next_maps && p.kind != PacketKind::typing &&
-        p.kind != PacketKind::drone)
+        p.kind != PacketKind::drone && p.kind != PacketKind::msc)
         throw std::invalid_argument("Unknown packet kind");
     const auto payload = greeting ? 72
                          : p.kind == PacketKind::away
@@ -611,7 +613,7 @@ std::vector<std::uint8_t> encode(const Packet &p, bool compact_pose, std::uint32
         w.integer(p.voice.bytes.size(), 2);
         w.bytes.insert(w.bytes.end(), p.voice.bytes.begin(), p.voice.bytes.end());
     }
-    if (p.kind == PacketKind::chat || p.kind == PacketKind::admin) {
+    if (p.kind == PacketKind::chat || p.kind == PacketKind::admin || p.kind == PacketKind::msc) {
         w.integer(p.text.size(), 2);
         w.bytes.insert(w.bytes.end(), p.text.begin(), p.text.end());
     }
@@ -991,6 +993,12 @@ std::optional<Packet> decode(std::span<const std::uint8_t> bytes) noexcept {
             p.text.assign(reinterpret_cast<const char *>(bytes.data() + r.at), static_cast<std::size_t>(length));
             r.at = bytes.size();
             if (!valid_chat_text(p.text)) return {};
+        } else if (p.kind == PacketKind::msc) {
+            const auto length = r.integer(2);
+            if (!p.source || !length || length > 16384 || length != bytes.size() - r.at) return {};
+            p.text.assign(reinterpret_cast<const char *>(bytes.data() + r.at), static_cast<std::size_t>(length));
+            r.at = bytes.size();
+            if (p.text.find('\0') != std::string::npos) return {};
         } else if (p.kind == PacketKind::typing) {
             const auto on = r.integer(1);
             if (!p.source || on > 1) return {};

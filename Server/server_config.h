@@ -1,5 +1,7 @@
 #pragma once
 #include "roles.h"
+#include "player_stats.h"
+#include "object_spam_alerts.h"
 #include "Engine/Game/Multiplayer/distance_settings.h"
 #include "Engine/Game/Multiplayer/object_placement.h"
 #include "Engine/Game/Multiplayer/session_model.h"
@@ -87,17 +89,27 @@ inline constexpr unsigned max_spawned_parks = 16;
 // ReSkateServer.json. Every setting an admin or the console changes is saved
 // back, so a restart keeps it.
 inline constexpr unsigned dedicated_tps = 20;
+struct VoiceMute {
+    std::uint64_t id{};
+    std::string name;
+    std::int64_t added{}, expires{}; // UTC seconds; zero expiry means permanent
+    bool active(std::int64_t now) const { return !expires || now < expires; }
+};
 // The tools the server can take away from single players (lock, throwdown_locks): noclip with
 // teleporting, No Bail, the boosts, and their own physics tuning.
 inline constexpr std::uint8_t lock_noclip = 1, lock_nobail = 2, lock_boosts = 4, lock_tuning = 8;
 inline constexpr std::uint8_t lock_movement = lock_noclip | lock_nobail | lock_boosts; // what the role's "movement" gives
 inline constexpr std::uint8_t lock_all = lock_movement | lock_tuning;
 struct ServerConfig {
+    StatsSettings player_stats;
+    ShopSettings shop;
+    WagerSettings wagers;
     std::filesystem::path file;
     std::string name = "ReSkate server";
     // The map everyone skates, named like the game's `load` command: "San Vansterdam",
     // "Isle of Grom", or a custom map in Mods\ such as "bbcity".
     std::string map = "San Vansterdam";
+    std::string default_map; // empty: off; selected once each empty period, including startup
     std::vector<std::string> map_pool; // maps for votes and the rotation, in order; empty: every map
     unsigned map_rotation = 0;         // minutes per map before the next pool map (0: off)
     // When the rotation's time is up, players vote for the next map: three of the pool's, any
@@ -232,12 +244,17 @@ struct ServerConfig {
     std::filesystem::path mods;
     Roles roles; // data/roles.json
     std::vector<MultiplayerBan> bans;
+    ObjectSpamSettings object_spam_alerts;
+    std::vector<VoiceMute> text_timeouts; // data/text-timeouts.json; expires must be positive
+    std::vector<VoiceMute> voice_mutes; // data/voice-mutes.json; manual, independent of roles/chat
 };
 // Reads `file`, writing a default one first when it does not exist. Settings this version
 // has that the file lacks (added by an update) are written back with their defaults, and
 // their names go to `added` ("votes.seconds" for a nested one).
 ServerConfig load_config(const std::filesystem::path &file, std::vector<std::string> *added = nullptr);
-void save_config(const ServerConfig &config);
+void save_config(const ServerConfig &config,bool include_restrictions=true);
+void save_voice_mutes(const ServerConfig &config);
+void save_text_timeouts(const ServerConfig &config);
 // Where the bans are kept: data/bans.json, beside the config.
 std::filesystem::path bans_file(const ServerConfig &config);
 // Where the roles are kept: data/roles.json. A server without the file starts with

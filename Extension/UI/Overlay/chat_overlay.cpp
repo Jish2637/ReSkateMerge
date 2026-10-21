@@ -17,6 +17,7 @@ namespace {
 std::atomic<ChatFeed> chat_feed{};
 }
 void set_chat_feed(ChatFeed feed) noexcept { chat_feed.store(feed); }
+ChatFeed get_chat_feed() noexcept { return chat_feed.load(); }
 } // namespace dingosdk::overlay
 
 using namespace dingosdk::overlay::detail;

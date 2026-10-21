@@ -460,6 +460,9 @@ void publish(Session &s, const NativeFrame *local) {
                              row.playback, row.prediction_ms, row.correcting);
     }
     std::lock_guard lock(s.mutex);
+    s.msc_feed.connected = dedicated_host(s) && view.connected && s.mode == Mode::join;
+    s.msc_feed.host = s.host_id; s.msc_feed.epoch = s.epoch;
+    if (!s.msc_feed.connected) s.msc_feed.payload.clear();
     s.view = std::move(view);
 }
 std::vector<MultiplayerChatCommand> chat_commands(const Session &s) {

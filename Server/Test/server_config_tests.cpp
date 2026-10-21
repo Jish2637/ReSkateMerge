@@ -1,5 +1,6 @@
 // A config written by an older server gains the settings added since, keeping its own values.
 #include "Server/server_config.h"
+#include "Server/msc_commands.h"
 #include "Extension/Multiplayer/Session/peer_slots.h"
 #include <algorithm>
 #include <fstream>
@@ -35,6 +36,60 @@ int run() {
 
     std::vector<std::string> added;
     const auto config = load_config(file, &added);
+    for(const auto &[alias,canonical]:msc_command_aliases) {
+        check(!custom_command_name_free(alias),"Alias can shadow a configured command: "+std::string(alias));
+        CustomCommand collision;collision.name=alias;collision.reply="Collision";
+        check(!custom_commands_error({collision}).empty(),"Alias collision bypasses configuration validation");
+        check(resolve_msc_command(alias)==canonical,"Alias did not resolve");
+    }
+    check(resolve_msc_command("effects")=="effects" && resolve_msc_command("vote")=="vote" && resolve_msc_command("party")=="party" && resolve_msc_command("build")=="build","MSC alias resolver changed native/staff commands");
+    check(resolve_msc_action("coinflip","l")=="leave" && resolve_msc_action("highlow","l")=="lower" && resolve_msc_action("highlow","100")=="100","Game action scope changed");
+    check(config.default_map.empty(),"Default map must be disabled for existing configs");
+    check(!custom_command_name_free("bal") && !custom_command_name_free("pay"),"Points command name collision");
+    {
+        auto custom=config;custom.default_map="Isle of Grom";save_config(custom);
+        check(load_config(file).default_map==custom.default_map,"Default map not persisted");
+        save_config(config);
+    }
+    check(config.object_spam_alerts == ObjectSpamSettings{}, "Legacy config did not gain default spam settings");
+    check(config.player_stats.enabled && config.player_stats.vip_hours==25 && config.player_stats.idle_seconds==300 &&
+          config.player_stats.daily_minutes==5 && config.player_stats.daily_points==25 && config.player_stats.leaderboard_minutes==60, "Legacy config did not gain MSC reward defaults");
+    check(!custom_command_name_free("stats") && !custom_command_name_free("daily") && !custom_command_name_free("top"), "Stats command names can collide with custom commands");
+    check(!config.wagers.enabled && config.wagers.min_stake==10 && config.wagers.coinflip_max_stake==1000 && config.wagers.highlow_max_stake==500,"Legacy config did not gain safe wager defaults");
+    check(config.shop.joinmsg_price==2500 && config.shop.colourbundle_price==1500 && config.shop.shimmerbundle_price==8000,"Expansion price defaults incorrect");
+    {auto changed=config;changed.wagers.enabled=true;changed.wagers.dice_max_stake=250;changed.shop.joinmsg_enabled=false;changed.shop.joinmsg_cooldown_seconds=600;save_config(changed);
+     const auto loaded=load_config(file);check(loaded.wagers.enabled && loaded.wagers.dice_max_stake==250 && !loaded.shop.joinmsg_enabled && loaded.shop.joinmsg_cooldown_seconds==600,"Expansion config round trip failed");save_config(config);}
+    check(config.shop.enabled && config.shop.tag_price==250 && config.shop.colour_price==50 && config.shop.shimmer_price==2500,"Legacy config did not gain shop defaults");
+    for(const auto name:{"joinmsg","colourbundle","shimmerbundle","coinflip","dice","highlow","shimmers","shop","tags","tag","colour","buy","cleartag"})check(!custom_command_name_free(name),"Shop command name collision");
+    {
+        auto shop=config;shop.shop.enabled=false;shop.shop.tag_price=123;shop.shop.colour_price=45;shop.shop.shimmer_price=3100;save_config(shop);
+        const auto restored=load_config(file);check(!restored.shop.enabled && restored.shop.tag_price==123 && restored.shop.colour_price==45 && restored.shop.shimmer_price==3100,"Shop settings do not round trip");
+        for(const auto invalid:{"0","-1","1.5","1000001","\"free\""}) {
+            for(const auto key:{"tag_price","colour_price","shimmer_price"}) {
+                const auto path=folder/"shop-invalid.json";std::ofstream(path)<<"{\"shop\":{\""<<key<<"\":"<<invalid<<"}}";
+                bool rejected=false;try{load_config(path);}catch(...){rejected=true;}check(rejected,"Invalid shop price accepted");
+            }
+        }
+        save_config(config);
+    }
+    {
+        auto custom=config;custom.player_stats.hourly_points=17;custom.player_stats.event_points=12;
+        save_config(custom);const auto roundtrip=load_config(file);
+        check(roundtrip.player_stats.hourly_points==17 && roundtrip.player_stats.event_points==12,"Reward settings do not round trip");
+        save_config(config);
+    }
+    {
+        const auto migration = folder / "stats-upgrade.json";
+        for (const auto &version : {std::string{}, std::string("\"version\":1,"), std::string("\"version\":2,")}) {
+            std::ofstream(migration) << "{\"player_stats\":{" << version << "\"daily_minutes\":10}}";
+            const auto upgraded = load_config(migration);
+            const auto expected = version.find(":2") != std::string::npos ? 10U : 5U;
+            check(upgraded.player_stats.daily_minutes == expected && load_config(migration).player_stats.daily_minutes == expected,
+                  "Daily reward migration failed to persist or changed a version-2 override");
+        }
+        std::ofstream(migration) << R"({"player_stats":{"daily_minutes":7}})";
+        check(load_config(migration).player_stats.daily_minutes==7,"Daily reward migration overwrote custom timing");
+    }
     const auto has = [&](std::string_view name) { return std::ranges::find(added, name) != added.end(); };
     check(has("anti_cheat.enforce_tuning") && has("votes.seconds") && has("votes.kick") && has("anti_cheat.modified_scoring") && has("anti_cheat.allowed_scoring_mods") &&
               has("access.use_global_bans") && has("maps.pool") && has("maps.rotation_minutes"),
@@ -176,9 +231,9 @@ int run() {
     save_config(locks);
     {
         std::ifstream in(file, std::ios::binary);
-        const std::string written_locks((std::istreambuf_iterator<char>(in)), {});
-        check(written_locks.find(R"("throwdown_locks": [)") != std::string::npos && written_locks.find(R"("nobail")") != std::string::npos,
-              "Throwdown locks not written as names");
+        const std::string locks_written((std::istreambuf_iterator<char>(in)), {});
+        check(locks_written.find(R"("throwdown_locks": [)") != std::string::npos && locks_written.find(R"("nobail")") != std::string::npos,
+              "Throwdown locks not locks_written as names");
     }
     check(load_config(file).throwdown_locks == (lock_nobail | lock_tuning), "Throwdown locks lost");
     std::ofstream(file, std::ios::binary) << R"({"players": {"throwdown_locks": ["boosts", "jetpack", 3, "teleport"]}})";
@@ -186,7 +241,7 @@ int run() {
     check(parse_lock_tools("all") == lock_all && parse_lock_tools(" NoBail , tuning") == (lock_nobail | lock_tuning) &&
               !parse_lock_tools("") && !parse_lock_tools("nobail,") && !parse_lock_tools("fly"),
           "Lock tool names not read");
-    check(lock_tools_text(lock_all) == "noclip, nobail, boosts, tuning" && lock_tools_text(0) == "none", "Lock tool names not written");
+    check(lock_tools_text(lock_all) == "noclip, nobail, boosts, tuning" && lock_tools_text(0) == "none", "Lock tool names not locks_written");
 
     // A config from before the sections: every setting is read from where it was, under the name
     // it had, and the file is written back in sections, in reading order, with nothing called new
@@ -386,6 +441,7 @@ int run() {
                            {"rules", {}, {"announce-to {player} No griefing!", "say {arg}"}, false},
                            {"restart", "Reloading...", {"map {map}"}, true}};
         check(config_error(voting).empty(), "Valid custom votes, announcements and commands refused");
+        voting.object_spam_alerts = {false, 12, 20, 90};
         save_config(voting);
         const auto back = load_config(file);
         check(back.votes.kick.seconds == 45 && back.votes.kick.min_players == 4 && back.votes.polls == "everyone",
@@ -397,6 +453,7 @@ int run() {
               "Custom votes lost on save");
         check(back.announcements.messages == voting.announcements.messages && back.announcements.interval == 15,
               "Announcements lost on save");
+        check(back.object_spam_alerts == voting.object_spam_alerts, "Object-spam settings lost on save");
         check(back.commands.size() == 3 && back.commands[0].name == "discord" && back.commands[0].reply == "Join us: discord.gg/reskate" &&
                   back.commands[0].commands.empty() && !back.commands[0].admin &&
                   back.commands[1].commands == voting.commands[1].commands && back.commands[2].admin,
@@ -406,6 +463,9 @@ int run() {
             change(bad);
             check(!config_error(bad).empty(), what);
         };
+        turned_down([](ServerConfig &c) { c.object_spam_alerts.count = 0; }, "Zero spam count accepted");
+        turned_down([](ServerConfig &c) { c.object_spam_alerts.window_seconds = 301; }, "Unbounded spam window accepted");
+        turned_down([](ServerConfig &c) { c.object_spam_alerts.cooldown_seconds = 0; }, "Zero spam cooldown accepted");
         turned_down([](ServerConfig &c) { c.votes.custom[0].name = "map"; }, "A custom vote named like a built-in one accepted");
         turned_down([](ServerConfig &c) { c.votes.custom[0].name = "Restart!"; }, "A custom vote name with capitals and marks accepted");
         turned_down([](ServerConfig &c) { c.votes.custom[0].name = "list"; }, "A custom vote named like /vote list accepted");
@@ -576,6 +636,50 @@ int run() {
         check(config_error(voting).empty(), "The park votes from README.txt were refused: " + config_error(voting));
     }
 
+    for (const std::string invalid : {"0", "-1", "6.5", "10001", "\"six\""}) {
+        const auto bad = folder / "invalid-spam.json";
+        const auto contents = "{\"object_spam_alerts\":{\"count\":" + invalid + "}}";
+        { std::ofstream out(bad); out << contents; }
+        bool rejected{};
+        try { load_config(bad); } catch (const std::exception &e) { rejected = std::string(e.what()).find("object_spam_alerts.count") != std::string::npos; }
+        check(rejected && text(bad) == contents, "Invalid count accepted or config overwritten: " + invalid);
+    }
+    {
+        auto muted = config;
+        muted.file = folder / "voice-persistence" / "ReSkateServer.json";
+        muted.voice_mutes = {{76561198000990003ULL, "Persistent", 100, 0}, {76561198000990004ULL, "Timed", 100, 200}};
+        save_config(muted);
+        const auto restored = load_config(muted.file);
+        check(restored.voice_mutes.size() == 2 && restored.voice_mutes[0].expires == 0 && restored.voice_mutes[1].expires == 200, "Voice mute persistence lost durations");
+        check(restored.voice_mutes[0].active(1000000) && restored.voice_mutes[1].active(199) && !restored.voice_mutes[1].active(200), "Mute expiry boundary or permanent mute wrong");
+        const auto voice_file = muted.file.parent_path() / "data" / "voice-mutes.json";
+        { std::ofstream out(voice_file); out << "bad JSON"; }
+        bool rejected{};
+        try { load_config(muted.file); } catch (const std::exception &) { rejected = true; }
+        check(rejected && text(voice_file) == "bad JSON", "Broken mute file was silently discarded or overwritten");
+    }
+    {
+        auto timed = config;
+        timed.file = folder / "text-persistence" / "ReSkateServer.json";
+        timed.text_timeouts = {{76561198000990003ULL, "Timed Text", 100, 200}};
+        timed.voice_mutes = {{76561198000990004ULL, "Voice", 100, 0}};
+        save_config(timed);
+        const auto restored = load_config(timed.file);
+        check(restored.text_timeouts.size() == 1 && restored.text_timeouts.front().expires == 200 && restored.voice_mutes.size() == 1 && restored.voice_mutes.front().expires == 0, "Text/voice persistence interfered or lost expiry");
+        check(restored.text_timeouts.front().active(199) && !restored.text_timeouts.front().active(200), "Text deadline boundary wrong");
+        timed.text_timeouts.front().expires = 0;
+        bool refused_permanent{};
+        try { save_text_timeouts(timed); } catch (const std::exception &) { refused_permanent = true; }
+        check(refused_permanent, "Permanent text timeout could be saved");
+        const auto text_file = timed.file.parent_path() / "data" / "text-timeouts.json";
+        for (const std::string expiry : {"0", "-1", "1.5", "\"forever\""}) {
+            const auto contents = "[{\"id\":\"76561198000990003\",\"expires\":" + expiry + "}]";
+            { std::ofstream out(text_file); out << contents; }
+            bool rejected{};
+            try { load_config(timed.file); } catch (const std::exception &) { rejected = true; }
+            check(rejected && text(text_file) == contents, "Invalid/permanent timeout accepted or overwritten");
+        }
+    }
     std::filesystem::remove_all(folder);
     if (failures) return 1;
     std::cout << "server config: ok\n";

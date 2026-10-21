@@ -110,3 +110,7 @@ clients are refused; non-S.K.A.T.E. wire messages and general protocol 52 remain
 unchanged. The existing release tooling also publishes a source ZIP generated
 from the final commit, verified against its archive comment and checksums.
 Repository visibility, supported game pins and update channel are unchanged.
+
+## Version 0.1.3 and MSC server 2.1.2
+
+Client base: edcce441407880a7a9e2e857046e58c2dcc8c90f (v0.1.2). MSC server base: supplied ReSkateServer-2.1.1-MSC-Phase1-test2-source.zip, enhanced through the local Phase 2/3 test builds. Its Server implementation is now integrated into the tracked Server directory with selective CMake/test registration. Older client files from that source ZIP are not imported. Existing ReSkateMerge client features and shared contracts are retained. The release includes the stake-popup repair, animated authoritative outcome presentation, public lobby invitations and existing-shimmer cyan label/alias. License and original attribution remain unchanged.

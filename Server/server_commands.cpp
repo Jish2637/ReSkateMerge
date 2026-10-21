@@ -1,6 +1,8 @@
 #include "server_host.h"
+#include "msc_commands.h"
 #include "server_words.h"
 #include "server_text.h"
+#include "moderator_help.h"
 #include "Engine/Core/Text/word_filter.h"
 #include "Engine/Game/World/park_randomization.h"
 #include <algorithm>
@@ -28,6 +30,14 @@ constexpr std::string_view help_text =
     "announce <text> | announce-to <player> <text> | announcements [list|add <text>|remove <n>|clear|interval <minutes>|off]\n"
     "map-pool [add|remove <map>|clear] | rotation [<minutes>|off | vote on|off | stay <minutes>|off | announce on|off | extend [minutes]]\n"
     "park <lot> <layout> | park random | layer-sync on|off | layer <key> default|on|off | tod <time|default>\n"
+    "build save <name> [replace] | build list [page] | build load <name> | build unload <name> | build remove <name>\n"
+    "build confirm | build cancel - removal, unloading and overwrites need confirmation within 60 seconds\n"
+    "whoplaced [minutes] [page] | nearobj [partial name] | nearobj page <n> | delobj <player name>\n"
+    "mute <player> [minutes] | unmute <player name or SteamID64> | mutes [page]\n"
+    "timeout <player> <minutes> | untimeout <player name or SteamID64> | timeouts [page]\n"
+    "modhelp [group or number] [page] - grouped private staff command reference\n"
+    "cleartag <player> - remove and disable their active purchased name tag\n"
+    "viptest <player> - boost playtime to one active minute below VIP (admin)\n"
     "park-mod list | park-mod add <name> [<name>...] [minutes] | park-mod remove <name> [<name>...] | park-mod clear | park-mod reload <name> [<name>...]\n"
     "park-mod config add <name> | <mod folder> | <map> [| <key>] | park-mod config remove <name>\n"
     "activity-log on|off | announce-throwdowns on|off | parties [on|off] | party-size <2-8> | afk-kick <minutes>|off | speed-check off|warn|kick | board-check off|warn|kick\n"
@@ -37,17 +47,23 @@ constexpr std::string_view help_text =
 } // namespace
 
 std::string Host::command(std::string_view line, std::uint64_t admin) {
+    account_stats(); // memory only; also covers console map changes between host ticks
     const bool console = admin == 0;
     auto [action, argument] = split(line);
     const auto verb = lower(action);
     // The in-game menu's names for the same settings.
-    const std::string name(canonical_command(verb));
+    std::string name(canonical_command(verb));
+    // Keep the original MSC voice command names as aliases.
+    if (name == "vmute") name = "mute";
+    else if (name == "vunmute") name = "unmute";
+    else if (name == "vmutes") name = "mutes";
     // From a player's game: what their role gives them (roles.h). The console may do anything.
     if (!console && !can(admin, name)) {
         const auto *role = role_of(admin);
         return staff(role) ? "Your role (" + role->name + ") cannot use " + (name.empty() ? std::string("that") : name) + "."
                            : std::string("You are not an admin on this server.");
     }
+    if (admin && text_timed_out(admin) && timeout_blocks_command(line)) return text_timeout_notice(admin);
     // Nobody acts on a player whose rank is theirs or above, or hands out a role that is.
     const auto outranks = [&](std::uint64_t other) { return console || rank(admin) > rank(other); };
     const auto target = [&](std::string_view text) -> Guest * {
@@ -60,25 +76,42 @@ std::string Host::command(std::string_view line, std::uint64_t admin) {
         if (const auto id = number(first)) return find(*id);
         Guest *match{};
         for (auto &[id, guest] : guests_)
-            if (guest->handshaken && lower(guest->member.name).starts_with(lower(text))) {
+            if (guest->handshaken && (lower(guest->member.name).starts_with(lower(text)) || lower(display_name(*guest)).starts_with(lower(text)))) {
                 if (match) return nullptr;
                 match = guest.get();
             }
         return match;
     };
-    const auto changed = [&](std::string text) {
+    const auto changed = [&](std::string text,bool include_restrictions=true) {
         ++bans_revision_; // cheap: admins only get a fresh list when it moved
-        save();
+        save(include_restrictions);
         roster_dirty_ = true;
         if (!console) log_(text); // the console logs its own replies
         return text;
     };
     if (name.empty() || name == "help") return std::string(help_text);
+    if (name == "build") return build_command(argument, admin);
+    if (name == "cleartag") return clear_tag(argument, admin);
+    if (name == "viptest") return vip_test_command(argument, admin);
+    if (name == "modhelp") {
+        return grouped_moderator_help(argument, [&](std::string_view command) {
+            if (console) return true;
+            const auto polls = enabled_polls();
+            const bool can_poll = polls == ServerPolls::everyone || (polls == ServerPolls::admins && has(admin, multiplayer::role_polls));
+            if (command == "@console") return false;
+            if (command == "@poll") return can_poll;
+            if (command == "@poll-end") return can_poll || has(admin, multiplayer::role_polls);
+            if (command == "@vote") return may(admin, multiplayer::role_votes) && (enabled_votes() || !custom_votes().empty());
+            if (command == "@answer") return may(admin, multiplayer::role_votes) && polls != ServerPolls::off;
+            return can(admin, command);
+        });
+    }
     if (name == "status")
         return config_.name + " | " + map_name() + " | " + std::to_string(players()) + "/" +
                std::to_string(config_.max_players) + " players | " + std::to_string(config_.tps) + " TPS | voice " +
                (voice_policy_.allowed ? "on" : "off") + " (" + std::to_string(static_cast<int>(config_.voice_range)) +
                " m) | password " + (password_ ? "on" : "off") + " | code " + invite();
+    if (name == "whoplaced" || name == "nearobj" || name == "delobj") return object_moderation_command(name, argument, admin);
     if (name == "net") return network_report(argument, console);
     if (name == "players") {
         std::string text = std::to_string(players()) + " players";
@@ -127,6 +160,81 @@ std::string Host::command(std::string_view line, std::uint64_t admin) {
         const auto done = "Sent to " + label + (recipients.size() > 1 || to_admins ? " (" + std::to_string(recipients.size()) + " players)" : "") + ".";
         if (!console) log_("[dm] " + from + " -> " + label + ": " + clean_chat_text(text));
         return done;
+    }
+    if (name == "mutes" || name == "timeouts") {
+        const bool text = name == "timeouts";
+        if (text) tick_text_timeouts(); else tick_voice_mutes();
+        const auto &records = text ? config_.text_timeouts : config_.voice_mutes;
+        std::vector<const VoiceMute *> active_mutes;
+        for (const auto &entry : records) if (entry.active(static_cast<std::int64_t>(std::time(nullptr)))) active_mutes.push_back(&entry);
+        const auto page = argument.empty() ? std::optional<std::uint64_t>{1} : number(argument);
+        const auto pages = std::max<std::size_t>(1, (active_mutes.size() + 7) / 8);
+        if (!page || !*page || *page > pages) return "Usage: /" + name + " [page 1-" + std::to_string(pages) + "].";
+        std::string result = (text ? "Text timeouts: " : "Voice muted: ") + std::to_string(active_mutes.size()) + " | page " + std::to_string(*page) + "/" + std::to_string(pages);
+        for (auto i = (*page - 1) * 8; i < std::min<std::size_t>(*page * 8, active_mutes.size()); ++i) {
+            const auto &entry = *active_mutes[i];
+            result += "\n" + clean_chat_text(entry.name) + (entry.expires ? " - " + std::to_string(std::max<std::int64_t>(1, (entry.expires - std::time(nullptr) + 59) / 60)) + " min left" : " - permanent");
+        }
+        return result;
+    }
+    if (name == "mute" || name == "unmute" || name == "timeout" || name == "untimeout") {
+        const bool text = name == "timeout" || name == "untimeout";
+        const bool apply = name == "mute" || name == "timeout";
+        auto &records = text ? config_.text_timeouts : config_.voice_mutes;
+        auto query_text = trim(argument);
+        std::uint64_t minutes{};
+        const auto usage = "Usage: /" + name + " <player> " + (text ? "<minutes: 1-525600>. Text timeouts require a duration." : "[minutes: 1-525600]. Omit minutes for a permanent voice mute.");
+        if (apply) {
+            const auto space = query_text.rfind(' ');
+            if (space != std::string_view::npos) {
+                const auto suffix = trim(query_text.substr(space + 1));
+                if (!suffix.empty() && ((suffix.front() >= '0' && suffix.front() <= '9') || suffix.front() == '-' || suffix.front() == '+')) {
+                    const auto duration = number(suffix);
+                    if (!duration || !*duration || *duration > 525600) return usage;
+                    minutes = *duration; query_text = trim(query_text.substr(0, space));
+                }
+            }
+            if (text && !minutes) return usage;
+        }
+        if (query_text.size() >= 2 && query_text.front() == '"' && query_text.back() == '"') query_text = query_text.substr(1, query_text.size() - 2);
+        if (query_text.empty()) return apply ? usage : "Usage: /" + name + " <player name or SteamID64>.";
+        const auto query = lower(query_text);
+        std::map<std::uint64_t, std::string> candidates, exact;
+        const auto wanted_id = number(query_text);
+        const auto consider = [&](std::uint64_t id, const std::string &label) {
+            if ((wanted_id && id == *wanted_id) || lower(label) == query) exact[id] = label;
+            else if (!wanted_id && lower(label).find(query) != std::string::npos) candidates[id] = label;
+        };
+        for (const auto &[id, g] : guests_) if (g->handshaken) consider(id, guest_name(*g));
+        if (!apply) for (const auto &entry : records) consider(entry.id, entry.name);
+        if (!exact.empty()) candidates = std::move(exact);
+        if (candidates.empty()) return "No player matches that name or SteamID64.";
+        if (candidates.size() != 1) return "Multiple players match. Use a longer or exact name, or a SteamID64.";
+        const auto [id, label] = *candidates.begin();
+        if (!outranks(id)) return "You cannot change a chat restriction for a player of your rank or above.";
+        const bool restricted = text ? text_timed_out(id) : voice_muted(id);
+        if (!apply && !restricted) return label + (text ? " has no active text timeout." : " is not voice muted.");
+        if (apply && !restricted && records.size() >= max_role_players) return "The restriction list is full. Remove old entries first.";
+        auto previous = records;
+        std::erase_if(records, [id](const auto &entry) { return entry.id == id; });
+        const auto wall = static_cast<std::int64_t>(std::time(nullptr));
+        if (apply) records.push_back({id, label, wall, minutes ? wall + static_cast<std::int64_t>(minutes * 60) : 0});
+        try { if (text) save_text_timeouts(config_); else save_voice_mutes(config_); }
+        catch (const std::exception &e) {
+            records = std::move(previous);
+            return std::string(text ? "Text timeout was not changed: " : "Voice mute was not changed: ") + e.what();
+        }
+        if (auto *g = find(id); g && g->handshaken) {
+            if (text) send_chat(apply ? text_timeout_notice(id) + " Server staff set this timeout." : "Server staff have removed your text chat timeout.", g);
+            else send_chat(apply ? "Your voice has been muted by server staff " + (minutes ? "for " + std::to_string(minutes) + " min." : std::string("until manually unmuted.")) +
+                                    (text_timed_out(id) ? "" : " Text chat is still available.") : "Your voice has been unmuted by server staff.", g);
+        }
+        const auto *actor = find(admin);
+        log_(std::string(text ? "[text-timeout] " : "[voice-mute] ") + (actor ? guest_name(*actor) : std::string("Server console")) + " (" + std::to_string(admin) + ") " +
+             (apply ? "restricted " : "restored ") + label + " (" + std::to_string(id) + ")" + (apply ? (minutes ? " for " + std::to_string(minutes) + " min" : " permanently") : ""));
+        roster_dirty_ = true;
+        if (text) return label + (apply ? " is now text chat muted for " + std::to_string(minutes) + " min." : " has no text chat timeout.");
+        return label + (apply ? (minutes ? " is now voice muted for " + std::to_string(minutes) + " min." : std::string(" is now voice muted until manually unmuted.")) : " is now voice unmuted.");
     }
     if (name == "kick") {
         // "kick <player> [minutes|restart]". A last word that is a time is one only when what
@@ -208,8 +316,8 @@ std::string Host::command(std::string_view line, std::uint64_t admin) {
             return "This server does not have that map. Put the map's mod folder in Mods next to the server, then restart it.";
         if (map_hash(map_destination(argument)) == map_) return "The server is already on that map.";
         change_map(argument);
-        save();
-        return changed("Changing map to " + map_name());
+        save(false); // native config save; unchanged voice/text restrictions are not rewritten
+        return changed("Changing map to " + map_name(),false);
     }
     if (name == "maps" && lower(argument) == "reload") {
         // A map mod copied into Mods while the server runs: its maps can be switched to at once.
@@ -1145,6 +1253,68 @@ bool Host::check_speed(Guest &guest, std::uint64_t sent) {
         }
     } else guest.speed_normal_since = 0;
     return true;
+}
+std::string Host::text_timeout_notice(std::uint64_t id) const {
+    const auto wall = static_cast<std::int64_t>(std::time(nullptr));
+    for (const auto &entry : config_.text_timeouts) if (entry.id == id && entry.expires > wall)
+        return "You are text chat muted for " + std::to_string((entry.expires - wall + 59) / 60) + " min.";
+    return {};
+}
+std::string Host::voice_mute_notice(std::uint64_t id) const {
+    const auto wall = static_cast<std::int64_t>(std::time(nullptr));
+    for (const auto &entry : config_.voice_mutes) if (entry.id == id && entry.active(wall))
+        return "Your voice is muted by server staff " + (entry.expires ? "for " + std::to_string((entry.expires - wall + 59) / 60) + " min." : std::string("until manually unmuted."));
+    return {};
+}
+bool Host::timeout_blocks_command(std::string_view line) const {
+    const auto [verb, rest] = split(line);
+    const auto name = resolve_msc_command(verb);
+    if(name=="tag")return lower(trim(rest))!="off";
+    if(name=="buy")return true;
+    if (name == "poll") return lower(trim(rest)) != "end";
+    if (name == "party") { const auto [sub, message] = split(rest); (void)message; return lower(sub) == "say" || lower(sub) == "chat"; }
+    if (name == "vote") {
+        const auto answer = lower(trim(rest));
+        return answer != "yes" && answer != "no" && answer != "y" && answer != "n" && answer != "list" &&
+               !(answer.size() == 1 && answer[0] >= '1' && answer[0] <= '6');
+    }
+    if (name == "announcements") return !rest.empty() && lower(trim(rest)) != "list";
+    for (const auto blocked : {"p", "w", "whisper", "tell", "msg", "msg-party", "msg-admins", "say", "announce", "announce-to", "poll-run"})
+        if (name == blocked) return true;
+    for (const auto &custom : config_.commands) if (custom.name == name && !custom.commands.empty()) return true;
+    return false;
+}
+void Host::tick_text_timeouts() {
+    if (now_ < next_text_timeout_check_) return;
+    next_text_timeout_check_ = now_ + 1000000;
+    const auto wall = static_cast<std::int64_t>(std::time(nullptr));
+    std::vector<VoiceMute> expired;
+    for (const auto &entry : config_.text_timeouts) if (entry.expires <= wall) expired.push_back(entry);
+    if (expired.empty()) return;
+    std::erase_if(config_.text_timeouts, [wall](const auto &entry) { return entry.expires <= wall; });
+    try { save_text_timeouts(config_); }
+    catch (const std::exception &e) { log_("Could not save expired text timeouts: " + std::string(e.what())); }
+    for (const auto &entry : expired) {
+        if (auto *g = find(entry.id); g && g->handshaken) send_chat("Your text chat timeout has expired.", g);
+        log_("[text-timeout] Expired: " + entry.name + " (" + std::to_string(entry.id) + ")");
+    }
+    roster_dirty_ = true;
+}
+void Host::tick_voice_mutes() {
+    if (now_ < next_voice_mute_check_) return;
+    next_voice_mute_check_ = now_ + 1000000;
+    const auto wall = static_cast<std::int64_t>(std::time(nullptr));
+    std::vector<VoiceMute> expired;
+    for (const auto &entry : config_.voice_mutes) if (!entry.active(wall)) expired.push_back(entry);
+    if (expired.empty()) return;
+    std::erase_if(config_.voice_mutes, [wall](const auto &entry) { return !entry.active(wall); });
+    try { save_voice_mutes(config_); }
+    catch (const std::exception &e) { log_("Could not save expired voice mutes: " + std::string(e.what())); }
+    for (const auto &entry : expired) {
+        if (auto *g = find(entry.id); g && g->handshaken) send_chat("Your voice mute has expired.", g);
+        log_("[voice-mute] Expired: " + entry.name + " (" + std::to_string(entry.id) + ")");
+    }
+    roster_dirty_ = true;
 }
 void Host::tell_admins(const std::string &text) {
     for (auto &[id, guest] : guests_)

@@ -7,10 +7,12 @@
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/vs2026-x64",
-      "environment": { "VCLibPackagePath": "${sourceDir}/build/no-vcpkg/vcpkg.user" },
+      "environment": {
+        "VCLibPackagePath": "${sourceDir}/build/no-vcpkg/vcpkg.user"
+      },
       "toolset": "v145",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "0.1.2",
+        "DINGOSDK_VERSION": "0.1.3",
         "DINGOSDK_LAUNCHER_AUTO_UPDATE": "ON",
         "DINGOSDK_RELEASE_REPO": "Jish2637/ReSkateMerge",
         "DINGOSDK_BUILD_TESTS": "OFF",
@@ -43,6 +45,23 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "vs2026-server-release",
+      "inherits": "vs2026-x64",
+      "displayName": "MSC server 2.1.2 Windows x64",
+      "binaryDir": "${sourceDir}/build/vs2026-server-release",
+      "cacheVariables": {
+        "DINGOSDK_VERSION": "2.1.2",
+        "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "OFF",
+        "DINGOSDK_BUILD_TRICK_LOGGER_TESTS": "OFF",
+        "DINGOSDK_BUILD_FIRST_PERSON_HOST_TESTS": "OFF",
+        "DINGOSDK_BUILD_TERMINOLOGY_TESTS": "OFF",
+        "DINGOSDK_BUILD_LAUNCHER_TESTS": "OFF",
+        "DINGOSDK_BUILD_TRAINER_TESTS": "OFF",
+        "DINGOSDK_BUILD_STEEZY_LANDINGS_TESTS": "OFF",
+        "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -59,6 +78,14 @@
     {
       "name": "linux-release",
       "configurePreset": "linux-x64"
+    },
+    {
+      "name": "msc-server-release",
+      "configurePreset": "vs2026-server-release",
+      "configuration": "Release",
+      "targets": [
+        "dingosdk_server"
+      ]
     }
   ]
 }

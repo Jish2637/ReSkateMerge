@@ -1281,8 +1281,10 @@ void dedicated_server_codec() {
     check(!read_server_tags(tags, player), "A player's ID read as a server");
     check(!read_server_tags("reskate,v1,k1,c4", server), "An incompatible server version listed");
 }
+#include "msc_interface_cases.h"
 int main() {
     try {
+        msc_interface_cases();
         codec();
         tick_rates_codec();
         random_parks_codec();

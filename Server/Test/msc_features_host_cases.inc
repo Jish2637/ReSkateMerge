@@ -1,0 +1,84 @@
+// Structured games and staff through the real server dispatcher.
+int run_msc_features_host() {
+    wire()={};const auto folder=std::filesystem::temp_directory_path()/"msc_features_host_cases";
+    std::filesystem::remove_all(folder);std::filesystem::create_directories(folder);
+    ServerConfig config;config.file=folder/"ReSkateServer.json";config.roles=default_roles();config.map="San Vansterdam";config.wagers.enabled=true;
+    config.player_stats.hourly_points=0;config.player_stats.daily_points=0;config.player_stats.leaderboard_minutes=0;
+    config.player_stats.streak_step=0;config.object_spam_alerts.enabled=false;
+    const std::uint64_t player=76561198000000801ULL,other=player+1;
+    config.roles.players[other]="admin";config.roles.settle();save_config(config);
+    {PlayerStatsStore seed;seed.open(folder/"data/player-stats.json");for(auto id:{player,other}){seed.joined(id,"Tester",1,std::time(nullptr));seed.players.at(id).wallet=20000;seed.players.at(id).points=100;seed.players.at(id).weekly_points=100;}seed.save();}
+    SteamTransport transport;auto writer=std::make_shared<SerialTasks>();Host host(config,transport,[](const auto&){},writer);
+    std::string error;check(host.start(error),"MSC interface server starts: "+error);const auto invite=parse_invite(host.invite());if(!invite)return 1;
+    std::map<std::uint64_t,Game> games;for(auto id:{player,other}){auto& g=games[id];g.id=id;g.epoch=9000+id%100;g.secret=invite->secret;g.map=map_hash(map_destination(config.map));g.name=id==player?"Buyer":"Recipient";}
+    std::uint64_t now=1000000000,next_ready=now;
+    auto run_for=[&](std::uint64_t us){for(const auto end=now+us;now<end;now+=50000){if(now>=next_ready){next_ready=now+1000000;for(auto& [id,g]:games)if(g.joined)g.ready(now);}host.tick(now);writer->submit([]{}).get();for(auto& [id,g]:games)g.read();}};
+    for(auto& [id,g]:games)g.hello(now);run_for(2000000);auto& p=games[player];auto& q=games[other];
+    auto saved=[&](std::uint64_t id=76561198000000801ULL){PlayerStatsStore seed;seed.open(folder/"data/player-stats.json");return seed.players.at(id);};
+
+    p.say("/msc-ui hello 1",now);q.say("/msc-ui hello 1",now);run_for(1100000);
+    std::map<std::uint64_t,std::uint64_t> serial;
+    auto send=[&](Game& g,Json body){body["v"]=1U;body["epoch"]=std::to_string(g.epoch);body["request"]=++serial[g.id];auto out=g.header(PacketKind::msc,now);out.text=body.dump();g.send(out);run_for(1100000);return out.text;};
+    auto retry=[&](Game& g,const std::string& text){auto out=g.header(PacketKind::msc,now);out.text=text;g.send(out);run_for(1100000);};
+    auto read=[&](Game& g,const char* op){auto j=Json::object();j["op"]=op;send(g,j);};
+    auto state=[&](Game& g){check(!g.msc_messages.empty(),"MSC feature reply missing");return msc::snapshot(g.msc_messages.back());};
+    auto response=[&](Game& g){for(auto it=g.msc_messages.rbegin();it!=g.msc_messages.rend();++it)if(msc::integer(*it,"request")==serial[g.id])return msc::snapshot(*it);throw std::runtime_error("Missing request acknowledgement");};
+    auto view=[&](Game& g,const std::string& name){const auto snap=state(g);for(const auto& v:snap.games)if(v.id==name)return v;throw std::runtime_error("Missing MSC game");};
+    auto act=[&](Game& g,const std::string& game,const std::string& action,std::uint64_t round=0){auto j=Json::object();j["op"]="game";j["game"]=game;j["action"]=action;j["round"]=round;j["stake"]=10U;return send(g,j);};
+    read(p,"games");check(state(p).games_supported && state(p).games.size()==3,"Existing game catalogue missing");
+    const auto base=saved().wallet,total=base+saved(other).wallet;
+    const auto create=act(p,"coinflip","create");
+    const auto announcements=std::ranges::count_if(q.chat,[](const auto& line){return line.find("opened a Coin Flip lobby")!=std::string::npos;});check(announcements==1,"UI lobby creation did not announce once to other players");const auto round=view(p,"coinflip").round;
+    check(round && saved().wallet==base-10,"Coin Flip did not reserve exactly one stake");
+    if(!round)return 1;
+    retry(p,create);check(std::ranges::count_if(q.chat,[](const auto& line){return line.find("opened a Coin Flip lobby")!=std::string::npos;})==announcements,"Duplicate UI create repeated announcement");check(saved().wallet==base-10,"Duplicate create reserved twice");
+    act(q,"coinflip","join",round->id);check(saved().wallet+saved(other).wallet==total-20 && saved(other).wallet==20000-10,"Join did not reserve real administrator funds");
+    const auto settle=act(p,"coinflip","start",round->id);check(saved().wallet+saved(other).wallet==total,"Coin Flip settlement lost or created points");
+    retry(p,settle);check(saved().wallet+saved(other).wallet==total,"Duplicate start paid twice");
+    check(!view(p,"coinflip").round && view(p,"coinflip").previous.has_value(),"Coin Flip result missing");
+    act(p,"coinflip","create");const auto replacement=view(p,"coinflip").round->id;
+    act(p,"coinflip","cancel",round->id);check(view(p,"coinflip").round->id==replacement,"Stale action cancelled a different round");
+    act(p,"coinflip","cancel",replacement);check(saved().wallet+saved(other).wallet==total,"Cancellation failed to refund");
+    act(p,"coinflip","create");const auto leave_round=view(p,"coinflip").round->id;
+    act(q,"coinflip","join",leave_round);const auto leave=act(q,"coinflip","leave",leave_round);const auto after_leave=saved(other).wallet;
+    retry(q,leave);check(saved(other).wallet==after_leave && saved().wallet+saved(other).wallet==total-10,"Leave refund repeated or failed");
+    act(p,"coinflip","cancel",leave_round);check(saved().wallet+saved(other).wallet==total,"Creator cancellation after leave failed refund");
+    act(p,"dice","create");const auto dice=view(p,"dice").round->id;act(q,"dice","join",dice);act(p,"dice","start",dice);
+    const auto outcome=view(p,"dice").previous;check(outcome && !outcome->rolls.empty(),"Dice faces missing from authoritative result");
+    if(outcome)for(const auto& roll:outcome->rolls)check(roll.value>=1 && roll.value<=6,"Invalid authoritative dice face");
+    check(saved().wallet+saved(other).wallet==total,"Dice settlement failed conservation");
+    act(p,"highlow","create");const auto high=view(p,"highlow").round;check(high && high->initial>=1 && high->initial<=13,"High / Low initial card missing");
+    read(q,"games");check(!view(q,"highlow").round,"Private High / Low round leaked");
+    if(high){act(p,"highlow",high->initial<13?"higher":"lower",high->id);const auto result=view(p,"highlow").previous;check(result && result->second>=1 && result->second<=13 && !result->direction.empty(),"High / Low outcome metadata missing");}
+    config.wagers.enabled=false;read(p,"games");check(!view(p,"dice").enabled && view(p,"dice").actions.empty(),"Disabled game exposed actions");
+    const auto disabled_balance=saved().wallet;act(p,"dice","create");check(saved().wallet==disabled_balance,"Disabled game charged stake");config.wagers.enabled=true;
+    read(p,"staff");check(!state(p).staff && !state(p).staff_available,"Ordinary client received staff data");
+    read(q,"staff");check(state(q).staff && state(q).staff_available,"Admin staff screen unavailable");
+    if(!state(q).staff)return 1;
+    check(state(q).staff->actions.size()>=130,"Admin tools missing");
+    auto staff=[&](Game& g,const char* op,const char* action,Json args){auto j=Json::object();j["op"]=op;j["action"]=action;j["args"]=args;return send(g,j);};
+    auto confirm=[&](Game& g,const std::string& token){auto j=Json::object();j["op"]="staff-confirm";j["token"]=token;return send(g,j);};
+    const auto original_voice=config.voice_chat;
+    staff(q,"staff-preview","voice",Json::array({original_voice?"off":"on"}));check(config.voice_chat==original_voice && state(q).staff->quote.has_value(),"Staff preview changed settings");
+    auto token=state(q).staff->quote->token;const auto confirmed=confirm(q,token);check(config.voice_chat!=original_voice,"Staff confirmation did not execute");
+    retry(q,confirmed);check(config.voice_chat!=original_voice,"Duplicate staff action repeated");
+    staff(q,"staff-preview","voice",Json::array({original_voice?"on":"off"}));token=state(q).staff->quote->token;
+    staff(q,"staff-preview","voice",Json::array({original_voice?"off":"on"}));confirm(q,token);check(config.voice_chat!=original_voice,"Replaced staff review executed");
+    token=state(q).staff->quote->token;run_for(61000000);confirm(q,token);check(!state(q).staff->quote,"Expired staff review remained actionable");
+    staff(q,"staff-preview","voice",Json::array({"on\noff"}));check(response(q).message.find("refused")!=std::string::npos,"Multiline staff field accepted");
+    staff(q,"staff-preview","quit",Json::array());check(response(q).message.find("refused")!=std::string::npos,"Console-only action accepted");
+    config.roles.players[other]="moderator";config.roles.settle();read(q,"staff");
+    const auto moderator=state(q);check(moderator.staff && std::ranges::find(moderator.staff->actions,"voice")==moderator.staff->actions.end(),"Moderator received server-wide permission");
+    staff(q,"staff-preview","voice",Json::array({"on"}));check(config.voice_chat!=original_voice,"Moderator bypassed server settings permissions");
+    config.roles.players[other]="admin";config.roles.settle();
+    staff(q,"staff-preview","voice",Json::array({original_voice?"on":"off"}));token=state(q).staff->quote->token;
+    config.roles.players[other]="moderator";config.roles.settle();confirm(q,token);check(config.voice_chat!=original_voice,"Revoked permission executed pending review");
+    config.roles.players[other]="admin";config.roles.settle();
+    config.roles.players[player]="admin";config.roles.settle();
+    staff(q,"staff-preview","kick",Json::array({std::to_string(player),""}));token=state(q).staff->quote->token;confirm(q,token);
+    check(!wire().closed.contains(player),"Staff action bypassed equal-rank protection");config.roles.players.erase(player);config.roles.settle();
+    staff(q,"staff-preview","kick",Json::array({std::to_string(player),""}));token=state(q).staff->quote->token;
+    host.drop(player,"Feature reconnect test");run_for(100000);p.epoch+=1000;p.joined=false;p.receiver={};wire().closed.erase(player);p.hello(now);run_for(2000000);
+    confirm(q,token);check(response(q).message.find("reconnected or left")!=std::string::npos,"Staff confirmation crossed target session");
+    host.stop("MSC feature tests complete");std::filesystem::remove_all(folder);return failures;
+}

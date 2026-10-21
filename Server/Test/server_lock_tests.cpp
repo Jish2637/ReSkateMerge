@@ -187,6 +187,7 @@ int run() {
     std::filesystem::create_directories(empty);
     load_levels(empty); // the retail maps
     ServerConfig config;
+    config.player_stats.enabled=false; // isolate upstream lock tests from MSC persistence
     config.file = std::filesystem::temp_directory_path() / "reskate_server_lock_tests" / "ReSkateServer.json";
     config.mods = empty;
     config.auto_update = false;

@@ -1,3 +1,4 @@
+#include "Engine/Game/Multiplayer/msc_interface.h"
 #pragma once
 #include "Engine/Game/Multiplayer/session_model.h"
 #include <cstdint>
@@ -70,4 +71,5 @@ unsigned next_maps_serial() noexcept;
 void set_map_package_lookup(MapPackageLookup lookup) noexcept;
 // The session's chat lines for the overlay. Thread-safe and cheap: callable every frame.
 MultiplayerChat chat();
+msc::Feed msc_feed();
 } // namespace dingosdk::multiplayer

@@ -136,14 +136,17 @@ std::string listed(const std::vector<std::string> &names) {
 void Host::publish_parks() {
     std::vector<NetworkObject> layout;
     for (const auto &park : parks_spawned_) layout.insert(layout.end(), park.objects.begin(), park.objects.end());
+    for (const auto &build : builds_loaded_) layout.insert(layout.end(), build.objects.begin(), build.objects.end());
     if (!park_objects_.revision() && layout.empty()) return;
     park_objects_.replace(layout);
 }
 
 void Host::remove_parks(std::string_view reason) {
-    if (parks_spawned_.empty()) return;
+    if (parks_spawned_.empty() && builds_loaded_.empty()) return;
     for (const auto &park : parks_spawned_) log_("[parks] " + park.name + " removed (" + std::string(reason) + ")");
     parks_spawned_.clear();
+    for(const auto &build:builds_loaded_)log_("[build] UTC "+std::to_string(std::time(nullptr))+" console (0) unloaded "+build.name+" ("+std::string(reason)+")");
+    builds_loaded_.clear();
     publish_parks();
 }
 
@@ -318,6 +321,8 @@ std::string Host::park_mod_command(std::string_view argument, std::uint64_t admi
             }
             total += loaded.back().objects.size();
         }
+        std::size_t build_objects{};for(const auto &build:builds_loaded_)build_objects+=build.objects.size();
+        if(total+build_objects>max_owned_objects)return refuse("loaded builds and server parks together may contain at most 1024 objects.");
         if (total > config_.park_limits.objects)
             return refuse("that makes " + std::to_string(total) + " park objects, and at most " + std::to_string(config_.park_limits.objects) +
                           " can be spawned at once.");
@@ -389,6 +394,8 @@ std::string Host::park_mod_command(std::string_view argument, std::uint64_t admi
             }
             total = total - up->objects.size() + loaded.back().objects.size();
         }
+        std::size_t build_objects{};for(const auto &build:builds_loaded_)build_objects+=build.objects.size();
+        if(total+build_objects>max_owned_objects)return refuse("loaded builds and server parks together may contain at most 1024 objects.");
         if (total > config_.park_limits.objects)
             return refuse("that makes " + std::to_string(total) + " park objects, and at most " + std::to_string(config_.park_limits.objects) +
                           " can be spawned at once.");

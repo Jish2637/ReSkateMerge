@@ -24,6 +24,8 @@ add_library(dingosdk_overlay STATIC
     Extension/UI/Overlay/chat_emotes.cpp
     Extension/UI/Overlay/chat_rich.cpp
     Extension/UI/Overlay/console_suggestions.cpp
+    Extension/UI/Overlay/msc_features.cpp
+    Extension/UI/Overlay/msc_hub.cpp
     Extension/UI/Overlay/skate_menu.cpp
     Extension/UI/Overlay/skate_menu_world.cpp
     Extension/UI/Overlay/skate_menu_addons.cpp
