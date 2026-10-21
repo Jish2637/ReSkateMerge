@@ -36,7 +36,7 @@ Integration adaptations:
   including hidden combo components. Synthetic combo rows are excluded from detection.
 - Terminology includes the detector's physical tracker rather than defining a
   second copy in the same namespace. A const evidence accessor is added.
-- Saved terminology schemas 1–5 remain accepted, with schema 5 emitted unchanged.
+- Saved terminology schemas 1â€“5 remain accepted, with schema 5 emitted unchanged.
 
 GPL-3.0 and original attribution remain in the source tree. Historical branch and
 ZIP documents describe their original builds; this file and the root README
@@ -87,3 +87,26 @@ and terminology diagnostic gating) and `1f93f07` (Sketchy Landings menu naming).
 The module's internal Steezy Landings names and existing settings filename are
 preserved. The release adds numeric version 0.1.1 and explicitly enables its
 regression suite; game-build pins and the ReSkateMerge update channel are retained.
+
+## Version 0.1.2
+
+Based on main at `add8ea84f6edfaaeb71fcee475473689193dd0a1` (PR #2,
+exact-spin terminology fixes). The configurable S.K.A.T.E. implementation was
+first built and tested as an isolated local candidate against that exact commit.
+It is integrated without replacing native setup extraction, phase tracking,
+trick matching, landing evaluation or turn processing.
+
+The existing INS menu and profile_config persistence store future-host
+preferences. Verified native categories are intersected with four INS toggles;
+unsupported native flags and the prohibition on manuals remain intact. Numerical
+rules retain defaults 115 / 90 / 450 degrees and are copied into all competitive
+detector tracker resets. The standalone ticker/terminology tracker retains its
+defaults. Host preferences are sampled on create; effective match rules freeze
+at start and cannot be replaced by later personal edits or setup events.
+
+An eight-byte revisioned throwdown extension carries the complete effective
+rules, with a matching guest join acknowledgement. Legacy/mismatched S.K.A.T.E.
+clients are refused; non-S.K.A.T.E. wire messages and general protocol 52 remain
+unchanged. The existing release tooling also publishes a source ZIP generated
+from the final commit, verified against its archive comment and checksums.
+Repository visibility, supported game pins and update channel are unchanged.

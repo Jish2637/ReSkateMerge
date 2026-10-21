@@ -1,12 +1,12 @@
 # ReSkateMerge
 
-Combined Windows x64 client: **skate-trick-detection-fixes → jish-fpm-native →
+Combined Windows x64 client: **skate-trick-detection-fixes â†’ jish-fpm-native â†’
 Terminology test27**, based on ReSkate 2.1.0. Source and releases are maintained
 in the public [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerge).
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.1-Windows-x64.zip` from this repository's
+1. Download `ReSkateMerge-v0.1.2-Windows-x64.zip` from this repository's
    release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
@@ -69,6 +69,20 @@ starts at zero. It saves separately in
 Routine terminology diagnostic capture is disabled; renaming and Capture Last
 remain available. Native animation/ownership behavior still needs live testing.
 
+`v0.1.2` includes commit `add8ea8` (PR #2, exact-spin terminology fixes) and
+adds **INS > ONLINE > S.K.A.T.E. RULES** in both menu styles. Hosts can restrict
+flips, grabs, grinds and ground tricks and configure the existing grind-adjacent
+minimum, spin rounding offset and grounded recovery limit. Defaults remain
+115 / 90 / 450 degrees. Native setup must also allow each selected category;
+manuals remain disabled. Reset controls restore the defaults.
+
+Preferences save to `%LOCALAPPDATA%\ReSkate\trainer\skate-host-rules.json` for
+future hosted matches. Each match freezes the host's effective rules and sends
+them to guests. All S.K.A.T.E. participants need compatible v0.1.2 rules support;
+legacy or mismatched clients cannot join under different judging rules. Other
+throwdown modes and the general session protocol (52) remain unchanged.
+Live menu input, actual game restart and two-client gameplay checks remain pending.
+
 Future releases use incremented numeric versions (for example `0.1.1`, `0.1.2`)
 consistently in the build, launcher, release tag, update manifest and ZIP.
 
@@ -97,7 +111,7 @@ python contrib/merge/package_client.py
 ```
 
 The packager also generates `artifacts/launcher-v<VERSION>.json` and checksums
-for the ZIP, manifest and binaries. It refuses a dirty tree, failed required
+for the client ZIP, source ZIP, manifest and binaries. It refuses a dirty tree, failed required
 tests, stale source metadata or a different compiled update repository. Game
 and DepotDownloader pins are retained in `contrib/merge/launcher-base.json`.
 For future releases, write `artifacts/RELEASE_NOTES-v<VERSION>.md`, push the

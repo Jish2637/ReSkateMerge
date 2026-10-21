@@ -1,4 +1,5 @@
 #include "throwdown_lab.h"
+#include "Extension/Skater/skate_host_preferences.h"
 #include "native_event_delivery.h"
 #include "Extension/Skater/skate_detector.h"
 #include "native_type_scan.h"
@@ -1744,6 +1745,7 @@ void observe_throwdown_send(std::uint32_t hash, Address type, Address payload, b
                         : Kind::score;
         if (kind != Kind::score) {
             ThrowdownLocalAction action{kind};
+            if(kind==Kind::created)action.hosting_preferences=skate::host_preferences().get();
             action.series = series;
             action.mmid = mmid;
             throwdown_relay_local(std::move(action));

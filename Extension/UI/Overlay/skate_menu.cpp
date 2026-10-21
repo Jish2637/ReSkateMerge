@@ -1,6 +1,7 @@
 #include "numeric_edit.h"
 #include "Engine/Core/Platform/launcher_support.h"
 #include "skate_menu_internal.h"
+#include "Extension/Skater/skate_host_preferences.h"
 #include "Extension/Skater/drone_flight.h"
 #include "skate_menu.h"
 #include "modding_menu.h"
@@ -979,6 +980,37 @@ float prompt(ImDrawList* draw, SkateMenu& menu, ImVec2 at, std::initializer_list
     return x + px(4) + menu.bold->CalcTextSizeA(px(14), FLT_MAX, 0, label).x - at.x;
 }
 
+} // namespace
+namespace menu {
+void skate_rules_page(SkateMenu& menu) {
+    auto draft=skate::host_preferences().get();bool changed=false;
+    begin_card(menu,"skate-host-rules","S.K.A.T.E. RULES","Preferences for future hosted throwdowns");
+    note("Native setup must also allow each category. Manuals remain disabled. Changes do not affect an existing throwdown.");
+    const char* names[]={"Flip tricks","Grabs","Grinds","Ground tricks"};
+    for(unsigned i=0;i<4;++i) {
+        bool on=(draft.categories&(1u<<i))!=0;
+        if(toggle_row(menu,names[i],"Allowed only when also enabled in native throwdown setup.",on)) {
+            if(on)draft.categories|=static_cast<std::uint8_t>(1u<<i);else draft.categories&=static_cast<std::uint8_t>(~(1u<<i));
+            changed=true;
+        }
+    }
+    const auto number=[&](const char* id,const char* label,const char* hint,int& value,int low,int high,int reset) {
+        field(menu,label,hint);bool c=slider_int(id,&value,low,high,"%d degrees");
+        ImGui::PushID(id);
+        if(button_row(menu,"reset",{{"Reset",value!=reset}})==0){value=reset;c=true;}
+        ImGui::PopID();return c;
+    };
+    changed|=number("grind-minimum","Grind-adjacent minimum","Minimum absolute net spin next to a grind. Smaller turns are classified as zero. Degrees; inclusive boundary.",draft.numerical.grind_minimum,0,180,115);
+    changed|=number("spin-offset","Spin rounding offset","Added to absolute net spin before rounding down in 180-degree steps. Higher values accept the next spin sooner.",draft.numerical.spin_offset,0,179,90);
+    changed|=number("recovery-limit","Grounded recovery limit","Cumulative grounded recovery travel in degrees. Reaching this limit rejects excessive grounded rotation; this is travel, not net heading.",draft.numerical.recovery_limit,180,1080,450);
+    note("Defaults: 115 / 90 / 450 degrees. Slider limits are conservative configuration bounds, not validated balance recommendations.");
+    if(primary_button(menu,"Reset to current defaults")){draft={};changed=true;}
+    if(changed)feedback(menu,skate::host_preferences().set(draft)?"Hosting preferences saved.":"Could not save hosting preferences.");
+    end_card();
+}
+
+} // namespace menu
+namespace {
 void draw_page_body(SkateMenu& menu, const Model& model, const CallbacksV3& callbacks) {
     switch (menu.page) {
     case page_home: home_page(menu, model, callbacks); break;
@@ -992,7 +1024,13 @@ void draw_page_body(SkateMenu& menu, const Model& model, const CallbacksV3& call
             const auto at = ImGui::GetCursorScreenPos();
             const auto room = ImGui::GetContentRegionAvail();
             detail::draw_online_embedded(ImGui::GetWindowDrawList(), at, ImVec2(at.x + room.x, at.y + room.y), model, callbacks, true);
-            ImGui::Dummy(room);
+            if(detail::online_embedded_rules_selected()) {
+                const auto display=ImGui::GetIO().DisplaySize;
+                const float offset=148*std::min(display.x/3840.f,display.y/2160.f);
+                ImGui::SetCursorScreenPos(ImVec2(at.x,at.y+offset));
+                ImGui::BeginChild("skate-host-rules-page",ImVec2(room.x,std::max(1.f,room.y-offset)),ImGuiChildFlags_NavFlattened);
+                skate_rules_page(menu);ImGui::EndChild();
+            } else ImGui::Dummy(room);
         } else {
             multiplayer_page(menu, model, callbacks);
         }
@@ -1263,7 +1301,7 @@ void draw_fullscreen(SkateMenu& menu, const Model& model, const CallbacksV3& cal
         draw_page_body(menu, model, callbacks);
         ImGui::EndChild();
         ImGui::PopStyleVar(2);
-        if (menu.page != page_online && !menu.recording_bind) pad_scroll(ImGui::GetCurrentWindow());
+        if ((menu.page != page_online || detail::online_embedded_rules_selected()) && !menu.recording_bind) pad_scroll(ImGui::GetCurrentWindow());
 
         // What the buttons do: the pad's, or the keys when there is none.
         const float foot = origin.y + size.y - footer;
@@ -1374,7 +1412,7 @@ void draw_skate_menu(SkateMenu& menu, const Model& model, const CallbacksV3& cal
     if (dingosdk::drone::menu_flag().exchange(false)) open_page(menu, page_addons, addon_drone); // `dronemenu`
     menu.page = std::clamp(menu.page, 0, static_cast<int>(page_count) - 1);
     if (page_hidden(menu, model, menu.page)) menu.page = full ? page_home : page_map;
-    menu_page_owns_pad().store(full && (menu.page == page_online || menu.recording_bind));
+    menu_page_owns_pad().store(full && ((menu.page == page_online && !detail::online_embedded_rules_selected()) || menu.recording_bind));
     // The pad in use names its buttons in the full screen prompts.
     const auto pad = read_gamepad();
 
@@ -1397,7 +1435,7 @@ void draw_skate_menu(SkateMenu& menu, const Model& model, const CallbacksV3& cal
     begin_console_frame(full, menu.bold, pad.playstation);
     if (full) draw_fullscreen(menu, model, callbacks, visible, appearing, pad.valid, pad.playstation);
     else draw_windowed(menu, model, callbacks, visible, appearing);
-    if (full) menu_sounds(menu.page == page_online);
+    if (full) menu_sounds(menu.page == page_online && !detail::online_embedded_rules_selected());
     ImGui::PopStyleColor(colours);
     ImGui::PopStyleVar(9);
     ImGui::PopFont();

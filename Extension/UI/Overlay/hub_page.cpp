@@ -76,7 +76,7 @@ constexpr ImU32 sticky = IM_COL32(236, 215, 108, 255), sticky_hover = IM_COL32(2
                 sticky_off = IM_COL32(120, 114, 80, 255), row_hover = IM_COL32(52, 53, 57, 240),
                 hint_ink = IM_COL32(110, 110, 110, 255), soft = IM_COL32(210, 210, 214, 255);
 
-enum class Tab { browser, host, session, voice, settings };
+enum class Tab { browser, host, session, voice, settings, skate_rules };
 // The game's own menu sounds, by their numbers in its list (UI/NativeMenu/ui_sound.h).
 constexpr std::uint32_t sound_navigate = 3, sound_select = 7, sound_tab = 56;
 enum class Kind { all, servers, lobbies };
@@ -1564,6 +1564,7 @@ void hub_frame(Hub &h, ImDrawList *draw, float u, ImVec2 a, ImVec2 z, float tabs
         h.tab = in_session ? Tab::session : Tab::browser;
         h.selected_player.clear();
     }
+    if(!embedded && h.tab==Tab::skate_rules)h.tab=in_session?Tab::session:Tab::browser;
     if ((h.tab == Tab::session || h.tab == Tab::voice) && !in_session) h.tab = Tab::browser;
     const bool runs_session = in_session && (mp.hosting || mp.server_admin);
     if (h.tab == Tab::settings && !runs_session) h.tab = in_session ? Tab::session : Tab::browser;
@@ -1598,17 +1599,17 @@ void hub_frame(Hub &h, ImDrawList *draw, float u, ImVec2 a, ImVec2 z, float tabs
         if (direction < 0 && tick >= h.repeat_at)
             for (int i = 0; i < 4; ++i)
                 if (held[static_cast<std::size_t>(i)]) direction = i, h.repeat_at = tick + (embedded ? 160 : 70);
-        if (direction >= 0) {
+        if (direction >= 0 && h.tab!=Tab::skate_rules) {
             // The first press only shows where the focus is.
             if (h.ring || !h.focus) move_focus(h, direction == 2 ? -1 : direction == 3 ? 1 : 0, direction == 0 ? -1 : direction == 1 ? 1 : 0);
             h.ring = true;
             h.focus_moved = true;
         }
-        if (key_new(4) || (pressed & 0x1000)) {
+        if (h.tab!=Tab::skate_rules && (key_new(4) || (pressed & 0x1000))) {
             if (h.focus && std::any_of(h.last.begin(), h.last.end(), [&](const Item &entry) { return entry.id == h.focus; })) h.fire = h.focus, h.ring = true;
         }
-        previous_tab = key_new(5) || (pressed & 0x10000);
-        next_tab = key_new(6) || (pressed & 0x20000);
+        previous_tab = !ImGui::IsAnyItemActive() && !ImGui::GetIO().WantTextInput && (key_new(5) || (pressed & 0x10000));
+        next_tab = !ImGui::IsAnyItemActive() && !ImGui::GetIO().WantTextInput && (key_new(6) || (pressed & 0x20000));
     }
     h.keys_before = keys;
     // A key that ended the typing (Enter, Escape) is still down: it is not a fresh press of anything.
@@ -1634,6 +1635,7 @@ void hub_frame(Hub &h, ImDrawList *draw, float u, ImVec2 a, ImVec2 z, float tabs
             if (in_session) tabs.emplace_back(static_cast<int>(Tab::session), "CURRENT SESSION"), tabs.emplace_back(static_cast<int>(Tab::voice), "VOICE CHAT");
             // And its settings only for whoever runs it.
             if (runs_session) tabs.emplace_back(static_cast<int>(Tab::settings), "SESSION SETTINGS");
+            if(embedded)tabs.emplace_back(static_cast<int>(Tab::skate_rules),"S.K.A.T.E. RULES");
         }
         if (previous_tab || next_tab) {
             std::size_t at = 0;
@@ -1679,6 +1681,7 @@ void hub_frame(Hub &h, ImDrawList *draw, float u, ImVec2 a, ImVec2 z, float tabs
     case Tab::session: session_page(ui, a, z); break;
     case Tab::voice: voice_page(ui, a, z); break;
     case Tab::settings: settings_page(ui, a, z); break;
+    case Tab::skate_rules: break; // The embedded INS page uses its native typed sliders.
     }
     if ((connecting || failed) && !tools) {
         ui.input = page_input, ui.clicked = page_clicked, ui.doubled = page_doubled;
@@ -1759,4 +1762,5 @@ void draw_online_embedded(ImDrawList *draw, ImVec2 a, ImVec2 z, const Model &mod
     hub_frame(h, draw, u, ImVec2(a.x, a.y + (tabs_height + 64) * u), z, a.y, input, true);
 }
 bool online_embedded_typing() { return hub().typing != 0; }
+bool online_embedded_rules_selected() {return hub().tab==Tab::skate_rules;}
 } // namespace dingosdk::overlay::detail

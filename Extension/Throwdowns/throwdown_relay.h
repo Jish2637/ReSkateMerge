@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include "Extension/Skater/skate_rule_values.h"
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -82,6 +83,7 @@ struct ThrowdownLocalAction {
     bool cancelling{};
     std::uint8_t rules_mask{};
     bool rules_verified{};
+    skate::HostingPreferences hosting_preferences;
     std::vector<std::uint8_t> placement, settings; // exited: CreateThrowdownQueueParams streams
     std::vector<std::uint32_t> participants;       // entered
     std::int32_t score{};                          // score, row

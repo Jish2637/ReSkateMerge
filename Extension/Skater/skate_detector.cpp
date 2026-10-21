@@ -45,7 +45,7 @@ bool active() noexcept{return state().enabled.load();}
 void bridge_error() noexcept{state().bridge_failed=true;}
 bool take_bridge_error() noexcept{return state().bridge_failed.exchange(false);}
 void begin(Rules rules) {
-    end();auto& s=state();std::lock_guard lock(s.mutex);s.rules=rules;s.tracker=trick_logger::TrickSetTracker{true,true,rules.allows(Category::grinds)};s.enabled=rules.verified;
+    end();auto& s=state();std::lock_guard lock(s.mutex);s.rules=rules;s.tracker=trick_logger::TrickSetTracker{true,true,rules.allows(Category::grinds),rules.numerical};s.enabled=rules.verified && rules.numerical.valid();
 }
 void end() {
     auto& s=state();std::lock_guard lock(s.mutex);s.enabled=false;s.own=s.done=false;s.bridge_failed=false;
@@ -56,7 +56,7 @@ void end() {
 }
 void turn(bool own) {
     auto& s=state();std::lock_guard lock(s.mutex);s.recovery_seen=false;s.reverts.clear();s.native_state=0;s.own=own;s.done=false;s.sampled=false;s.turn_started=GetTickCount64();
-    s.tracker=trick_logger::TrickSetTracker{true,true,s.rules.allows(Category::grinds)};s.rows.clear();s.ready.reset();s.legacy.reset();
+    s.tracker=trick_logger::TrickSetTracker{true,true,s.rules.allows(Category::grinds),s.rules.numerical};s.rows.clear();s.ready.reset();s.legacy.reset();
     s.native_eligible=false;s.wipeouts.reset();
     s.excluded.clear();s.boundary_logged=false;
     s.diagnostics.push_back(own?"Own turn started; gameplay capture active without logger commands":"Opponent turn started; local detection paused");
@@ -223,7 +223,7 @@ std::optional<bool> native_category_permission(std::uint32_t value) {
     return s.rules.allows(c);
 }
 void reset_native_eligibility() {
-    auto& s=state();std::lock_guard lock(s.mutex);s.recovery_seen=false;s.tracker=trick_logger::TrickSetTracker{true,true,s.rules.allows(Category::grinds)};s.rows.clear();s.native_eligible=false;s.legacy.reset();s.ready.reset();s.excluded.clear();s.boundary_logged=false;
+    auto& s=state();std::lock_guard lock(s.mutex);s.recovery_seen=false;s.tracker=trick_logger::TrickSetTracker{true,true,s.rules.allows(Category::grinds),s.rules.numerical};s.rows.clear();s.native_eligible=false;s.legacy.reset();s.ready.reset();s.excluded.clear();s.boundary_logged=false;
 }
 void native_outcome(bool landed,const std::array<std::uint8_t,28>& record) {
     auto& s=state();std::lock_guard lock(s.mutex);if(!s.enabled || !s.own)return;

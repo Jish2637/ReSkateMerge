@@ -79,8 +79,8 @@ warnings; compilation, resources and linking succeed.
 No game installation or user saves were changed. No live-game testing was
 performed. Before treating the build as gameplay-verified, check first-person
 camera/bail/spectator behavior, native controller navigation, terminology HUD
-refresh/restoration, rule persistence across restarts, Pop-Shuvit → Shuv and
-held 360 → 3 Shuv with Capture Last, combo rows, and multiplayer ownership/matching.
+refresh/restoration, rule persistence across restarts, Pop-Shuvit â†’ Shuv and
+held 360 â†’ 3 Shuv with Capture Last, combo rows, and multiplayer ownership/matching.
 For merged.4, finish or cancel a match with grinds disabled and immediately grind
 in free skate without restarting; repeat after quitting or disconnecting.
 For merged.5, enable Native head movement in camera-only on-foot look and confirm
@@ -105,3 +105,28 @@ turning it off restores native behavior, world transitions clear active state,
 and settings/presets persist across restart. Check terminology renaming/Capture
 Last still work without routine diagnostic captures. Automated model tests do
 not establish native hook behavior or in-game animation quality.
+
+## Version 0.1.2 validation
+
+The isolated candidate based on `add8ea8` passed five focused suites:
+`skate_rules`, `throwdown_relay`, `multiplayer_protocol`, `trick_logger` and
+`trick_terminology`. Coverage includes default-equivalent thresholds; slider
+endpoints; every native/preference category-mask intersection; malformed,
+truncated and unknown wire revisions; frozen host and guest rules; legacy and
+mismatched joins; guest judging using host rounding; detector resets; future
+matches; recreated preference stores; and Reset persistence.
+
+Release builds are rebuilt from the final committed source with version 0.1.2.
+The final full CTest report is saved to `build/vs2026-x64/test-results.xml`;
+`BUILD_INFO.json` in the client ZIP records the exact commit, binary checksums,
+test count and skips. The packager requires all feature-critical suites to pass
+without skips and validates the updater repository, game pins and PE headers.
+Client and source ZIPs, manifest and loose binaries are covered by SHA256SUMS.
+
+No game installation or saves are modified by release preparation. Live input
+with mouse/keyboard/controller in both INS menu styles, actual game restart,
+and a two-client S.K.A.T.E. session remain untested. Check that personal edits
+during a match affect only a subsequent throwdown, both peers judge with the
+same thresholds, native category restrictions still apply, and Jam/Spot Battle
+remain unchanged. These checks and the earlier first-person/Sketchy Landings
+live acceptance checks remain pending; this release is not gameplay-verified.

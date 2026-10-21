@@ -7,6 +7,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import zipfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -91,7 +92,14 @@ def main():
     archive=output/name
     count=package(stage,archive)
     digest=hashlib.sha256(archive.read_bytes()).hexdigest()
+    source_name=f'ReSkateMerge-v{version}-Source.zip'
+    source_archive=output/source_name
+    subprocess.run(['git','-C',str(ROOT),'archive','--format=zip',f'--prefix=ReSkateMerge-v{version}/',
+                    '--output='+str(source_archive),sha],check=True)
+    with zipfile.ZipFile(source_archive) as source:
+        assert source.comment.decode('ascii')==sha and source.testzip() is None
     sums=f'{digest}  {name}\n'
+    sums+=f'{hashlib.sha256(source_archive.read_bytes()).hexdigest()}  {source_name}\n'
     sums+=''.join(f'{hashes[binary]}  {binary}\n' for binary in hashes)
     sums+=f'{hashlib.sha256(manifest_path.read_bytes()).hexdigest()}  launcher.json\n'
     (output/f'SHA256SUMS-v{version}.txt').write_text(sums,encoding='ascii')

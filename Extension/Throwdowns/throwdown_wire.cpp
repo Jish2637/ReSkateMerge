@@ -54,6 +54,8 @@ struct Reader {
 
 bool valid_throwdown(const ThrowdownMessage &m) noexcept {
     if (!individual(m.leader) || !m.id) return false;
+    if(m.rules_revision && (m.rules_revision!=skate::rules_format || !m.numerical.valid() ||
+        (m.kind!=ThrowdownMessage::Kind::offer && m.kind!=ThrowdownMessage::Kind::start && m.kind!=ThrowdownMessage::Kind::attempt && m.kind!=ThrowdownMessage::Kind::join)))return false;
     switch (m.kind) {
     case ThrowdownMessage::Kind::offer:
         return valid_series(m.series) && !m.placement.empty() && m.placement.size() <= max_throwdown_params &&
@@ -141,6 +143,11 @@ std::vector<std::uint8_t> encode_throwdown(const ThrowdownMessage &m) {
         break;
     default: break;
     }
+    if(m.rules_revision) {
+        w.integer(m.rules_revision,1);
+        w.integer(m.rules_mask,1);
+        w.integer(m.numerical.grind_minimum,2);w.integer(m.numerical.spin_offset,2);w.integer(m.numerical.recovery_limit,2);
+    }
     if(w.bytes.size()>4096)throw std::invalid_argument("Throwdown exceeds packet budget");
     return std::move(w.bytes);
 }
@@ -223,6 +230,13 @@ std::optional<ThrowdownMessage> decode_throwdown(std::span<const std::uint8_t> b
             break;
         }
         default: break;
+        }
+        if(r.ok && r.at<bytes.size()) {
+            m.rules_revision=static_cast<std::uint8_t>(r.integer(1));
+            const auto mask=static_cast<std::uint8_t>(r.integer(1));
+            if(!m.rules_revision || (m.kind!=ThrowdownMessage::Kind::join && mask!=m.rules_mask))return {};
+            m.rules_mask=mask;
+            m.numerical={static_cast<int>(r.integer(2)),static_cast<int>(r.integer(2)),static_cast<int>(r.integer(2))};
         }
         if (!r.ok || r.at != bytes.size() || !valid_throwdown(m)) return {};
         return m;

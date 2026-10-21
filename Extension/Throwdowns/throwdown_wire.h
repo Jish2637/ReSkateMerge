@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include "Extension/Skater/skate_rule_values.h"
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -53,6 +54,8 @@ struct ThrowdownMessage {
     std::array<float, 16> location{};
     // offer, start, attempt: the S.K.A.T.E. setup's eight trick-category switches (0 for other modes).
     std::uint8_t rules_mask{};
+    std::uint8_t rules_revision{}; // nonzero: full rules, also acknowledged on join
+    skate::NumericalRules numerical;
     // attempt: the S.K.A.T.E. trick detector's normalized result as JSON (<= 3500 bytes); empty
     // when no detector judged the attempt.
     std::vector<std::uint8_t> detected;

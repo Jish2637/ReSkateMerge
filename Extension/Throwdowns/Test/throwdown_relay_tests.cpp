@@ -16,6 +16,7 @@
 #include <map>
 #include <stdexcept>
 
+namespace skate = dingosdk::skate;
 namespace dingosdk::trick_logger {void detected_attempt(Json) noexcept {} void observe_setup_menu(std::uint8_t,std::uint8_t) noexcept {}}
 namespace {
 struct Call {
@@ -131,6 +132,12 @@ void receive(std::uint64_t sender, const ThrowdownMessage &m) {
     auto sent=m;
     // The S.K.A.T.E. leaders here start with the setup they offered.
     if((m.id==0x30 || m.id==0x50) && m.kind==Kind::start){sent.rules_mask=0x6f;sent.settings={4};}
+    if((sent.kind==Kind::offer && sent.series=="ThrowdownSkate") ||
+       (sent.kind==Kind::start && !sent.settings.empty()) || sent.kind==Kind::attempt ||
+       (sent.kind==Kind::join && (sent.id==0x30 || sent.id==0x50 || sent.id==0x60))) {
+        sent.rules_revision=skate::rules_format;
+        if(sent.kind==Kind::join)sent.rules_mask=0x6f;
+    }
     const auto bytes = encode_throwdown(sent);
     receive_throwdown_relay(sender, bytes);
 }
@@ -577,7 +584,7 @@ void skate_flow() {
     end_session();
 }
 // The local player's S.K.A.T.E. drop: every player in the session sees it, joins it and starts
-// with the host's setup; nobody is turned away for the client they run.
+// with the host's setup after acknowledging the complete rules format.
 void skate_leader_flow() {
     const ThrowdownRelayInput in{me, {{other_peer, 4}}, true, 83};
     tick(in);
@@ -611,6 +618,68 @@ void skate_leader_flow() {
     check(tick(in).empty(), "A S.K.A.T.E. drop with unverified setup rules was offered");
     end_session();
     take_throwdown_relay_notices();
+}
+// A snapshot is owned by the host and acknowledged by each guest, independent of later preferences.
+void configurable_host_flow() {
+    const ThrowdownRelayInput in{me, {{other_peer,4}}, true, 95};tick(in);take_throwdown_relay_notices();
+    ThrowdownLocalAction created{Local::created};created.series="ThrowdownSkate";
+    created.hosting_preferences.categories=5;created.hosting_preferences.numerical={130,60,720};
+    throwdown_relay_local(created);tick(in);
+    ThrowdownLocalAction exited{Local::exited};exited.series="ThrowdownSkate";exited.mmid=0x70;
+    exited.placement={9};exited.settings={8};exited.rules_mask=0x6f;exited.rules_verified=true;
+    throwdown_relay_local(exited);auto out=tick(in);
+    check(out.size()==1 && out[0].rules_revision==skate::rules_format && out[0].rules_mask==0x65 && out[0].numerical==created.hosting_preferences.numerical,"Host preferences not intersected/frozen in offer");
+    auto join=make(Kind::join,me,0x70);
+    receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
+    check(count("add")==0,"Legacy client joined configurable SKATE");take_throwdown_relay_notices();
+    join.rules_revision=skate::rules_format;join.rules_mask=0x65;
+    receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
+    check(count("add")==0,"Client with different numerical rules joined");take_throwdown_relay_notices();
+    join.numerical={130,60,720};receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
+    check(count("add")==1,"Guest acknowledging complete frozen rules could not join");
+    local(Local::force_started,0x70);out=tick(in);
+    check(out.size()==1 && out[0].numerical==join.numerical && out[0].rules_mask==join.rules_mask,"Start lost host snapshot");
+    // A late native setup event cannot change a match after force-start sent its snapshot.
+    exited.rules_mask=0xff;throwdown_relay_local(exited);tick(in);
+    ThrowdownLocalAction entered{Local::entered};entered.participants={2,0x304};throwdown_relay_local(entered);tick(in);
+    ThrowdownLocalAction own_turn{Local::turn_started};own_turn.player=2;throwdown_relay_local(own_turn);tick(in);
+    check(skate::native_category_permission(2)==false,"Active match category changed after creation/start");
+    end_session();
+    // A new throwdown snapshots different future-host preferences.
+    tick(in);created.hosting_preferences={};throwdown_relay_local(created);tick(in);
+    exited.mmid=0x71;throwdown_relay_local(exited);out=tick(in);
+    check(out.size()==1 && out[0].rules_mask==0xff && out[0].numerical==skate::NumericalRules{},"New throwdown did not use new preferences");
+    end_session();
+    // Old hosts are refused before spawning a native mirror.
+    tick(in);auto old=offer(other_peer,0x72,"ThrowdownSkate");old.rules_revision=0;
+    receive_throwdown_relay(other_peer,encode_throwdown(old));tick(in);
+    check(!find("spawn") && !take_throwdown_relay_notices().empty(),"Legacy SKATE host silently accepted");end_session();
+}
+void configurable_guest_flow() {
+    const ThrowdownRelayInput in{me, {{leader,3}}, true, 96};tick(in);
+    auto offered=offer(leader,0x73,"ThrowdownSkate");offered.rules_revision=skate::rules_format;
+    offered.numerical={130,0,720};
+    receive_throwdown_relay(leader,encode_throwdown(offered));tick(in);
+    throwdown_relay_spawned(last_token,0x750,4);tick(in);local(Local::joined,0x750);auto out=tick(in);
+    check(out.size()==1 && out[0].kind==Kind::join && out[0].rules_revision==skate::rules_format && out[0].numerical==offered.numerical,"Guest did not acknowledge host numerical rules");
+    auto start=make(Kind::start,leader,0x73);start.rules_revision=skate::rules_format;start.rules_mask=offered.rules_mask;start.settings={4};start.order={leader,me};
+    calls.clear();receive_throwdown_relay(leader,encode_throwdown(start));tick(in);
+    check(!find("start"),"Guest accepted a start with different numeric rules");
+    start.numerical=offered.numerical;receive_throwdown_relay(leader,encode_throwdown(start));tick(in);
+    check(find("start"),"Guest refused matching frozen host rules");
+    ThrowdownLocalAction entered{Local::entered};entered.participants={0x303,2};throwdown_relay_local(entered);tick(in);
+    ThrowdownLocalAction turn{Local::turn_started};turn.player=2;throwdown_relay_local(turn);tick(in);
+    dingosdk::trick_logger::SetSample sample;sample.valid=true;sample.entity=1;sample.state=100;sample.goofy=false;sample.now=1;sample.steps=1;skate::sample(sample);
+    sample.state=201;sample.now+=16;++sample.steps;skate::sample(sample);
+    auto row=dingosdk::Json::object();row["name"]="Ollie";row["name_resolved"]=true;row["observation_id"]=1;row["raw_labels"]=dingosdk::Json::object();row["raw_labels"]["base_name"]="ID_TRICK_OLLIE";skate::observe(row);
+    sample.yaw=100;sample.now+=16;++sample.steps;skate::sample(sample);
+    sample.state=100;sample.now+=16;++sample.steps;skate::sample(sample);
+    sample.sequence_ends=1;sample.now+=16;++sample.steps;skate::sample(sample);skate::native_outcome(true,{});
+    out=tick(in);
+    check(out.size()==1 && out[0].kind==Kind::attempt && out[0].numerical==offered.numerical,"Guest attempt did not carry frozen host rules");
+    const auto detected=dingosdk::Json::parse(std::string(out[0].detected.begin(),out[0].detected.end()));
+    check(detected.value("display","")=="Ollie","Guest detector used personal spin rounding instead of host rules");
+    end_session();
 }
 // A running S.K.A.T.E. throwdown with the leader (and `other_peer`, if `third`), joined by the local player.
 void join_running_skate(const ThrowdownRelayInput &in, bool third) {
@@ -923,6 +992,8 @@ int main() {
         skate_cleanup_flow();
         skate_flow();
         skate_leader_flow();
+        configurable_host_flow();
+        configurable_guest_flow();
         alone_flow();
         challenge_flow();
         beacon_flow();

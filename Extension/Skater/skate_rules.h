@@ -1,5 +1,6 @@
 #pragma once
 #include "trick_metadata.h"
+#include "skate_rule_values.h"
 #include "trick_match.h"
 #include <optional>
 #include <set>
@@ -7,13 +8,14 @@
 #include <tuple>
 
 namespace dingosdk::skate {
-// The detector's matching-rules revision, for logs and replay reports only: players never
-// compare it, so any client can play S.K.A.T.E. with any other.
+// Detector computation revision for logs and replay reports. Multiplayer compatibility
+// is checked separately through rules_format and the complete frozen rules snapshot.
 inline constexpr std::uint16_t rules_version=14;
 enum class Category : std::uint8_t { none, flips, grabs, grinds, ground, manuals, grounded_rotation, unknown };
 struct Rules {
     std::uint8_t values{};
     bool verified{};
+    NumericalRules numerical;
     bool allows(Category c) const {
         if(c==Category::manuals)return false;
         const auto bit=c==Category::flips?0:c==Category::grabs?1:c==Category::grinds?2:c==Category::ground?3:8;

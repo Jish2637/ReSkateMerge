@@ -12,6 +12,7 @@ namespace dingosdk::overlay::detail {
 // their text boxes has the keyboard.
 void draw_online_embedded(ImDrawList* draw, ImVec2 a, ImVec2 z, const Model& model, const CallbacksV3& callbacks, bool input);
 bool online_embedded_typing();
+bool online_embedded_rules_selected();
 }
 
 namespace dingosdk::overlay {
@@ -105,6 +106,7 @@ void multiplayer_network_page(SkateMenu&, const Model&, const CallbacksV3&);
 void atmosphere_menu(SkateMenu&, const Model&, const CallbacksV3&);
 void progression_page(SkateMenu&, const Model&, const CallbacksV3&);
 void multiplayer_page(SkateMenu&, const Model&, const CallbacksV3&);
+void skate_rules_page(SkateMenu&);
 // Sidebar pages.
 void map_page(SkateMenu&, const Model&, const CallbacksV3&);
 void build_page(SkateMenu&, const Model&, const CallbacksV3&);

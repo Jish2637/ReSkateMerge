@@ -37,6 +37,7 @@ def main():
     manifest_path=output/('launcher-'+tag+'.json')
     manifest=json.loads(manifest_path.read_text())
     assets={f'ReSkateMerge-{tag}-Windows-x64.zip':output/f'ReSkateMerge-{tag}-Windows-x64.zip',
+            f'ReSkateMerge-{tag}-Source.zip':output/f'ReSkateMerge-{tag}-Source.zip',
             'SHA256SUMS.txt':output/f'SHA256SUMS-{tag}.txt',
             'launcher.json':manifest_path,
             'ReSkateLauncher.exe':stage/'ReSkateLauncher.exe','ReSkate.dll':stage/'ReSkate.dll'}

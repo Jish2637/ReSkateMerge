@@ -96,6 +96,7 @@ struct ChallengePlan {
 
 // The local player's own drop.
 struct Hosted {
+    skate::HostingPreferences preferences;
     skate::Rules rules;
     std::uint32_t id{}; // its MMID
     std::string series;
@@ -162,6 +163,7 @@ struct Relay {
     std::uint64_t next_prepare{}, next_info{};
     std::map<std::uint64_t, std::size_t> peers; // Steam ID -> slot
     std::optional<Hosted> hosted;
+    skate::HostingPreferences pending_preferences;
     std::map<Key, Mirror> mirrors;
     std::optional<Key> running;
     std::string running_series;
@@ -302,7 +304,7 @@ void send_offer(Relay &r, std::uint64_t now) {
     auto &h = *r.hosted;
     if(h.series==skate_mode && !h.rules.verified)return;
     auto m = message(Kind::offer, r.local, h.id);
-    if(h.series==skate_mode)m.rules_mask=h.rules.values;
+    if(h.series==skate_mode){m.rules_mask=h.rules.values;m.rules_revision=skate::rules_format;m.numerical=h.rules.numerical;}
     m.series = h.series; m.placement = h.placement; m.settings = h.settings; m.order = h.members;
     const auto before = r.outgoing.size();
     send(r, m);
@@ -330,7 +332,7 @@ void send_start(Relay &r, std::vector<std::uint64_t> order) {
     }
     if (order.size() > max_throwdown_order) order.resize(max_throwdown_order);
     auto m = message(Kind::start, r.local, h.id);
-    if(h.series==skate_mode){if(!h.rules.verified)return;m.rules_mask=h.rules.values;m.settings=h.settings;}
+    if(h.series==skate_mode){if(!h.rules.verified)return;m.rules_mask=h.rules.values;m.rules_revision=skate::rules_format;m.numerical=h.rules.numerical;m.settings=h.settings;}
     m.order = order;
     send(r, m);
     h.start_sent = true;
@@ -498,6 +500,7 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
     case Local::challenge_slam:
     case Local::challenge_ended: on_challenge_local(r, a, now); return;
     case Local::created:
+        r.pending_preferences=a.hosting_preferences;
         close_hosted(r); // a new drop replaces the old one
         break;
     case Local::exited: {
@@ -506,6 +509,7 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         if (!r.hosted || r.hosted->id != a.mmid) {
             close_hosted(r);
             Hosted h;
+            h.preferences=r.pending_preferences;
             h.id = a.mmid; h.series = a.series; h.relayed = relayed_mode(a.series);
             r.hosted = std::move(h);
             if (r.hosted->relayed)
@@ -515,8 +519,8 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         }
         auto &h = *r.hosted;
         h.placement = std::move(a.placement);
-        h.settings = std::move(a.settings);
-        h.rules={a.rules_mask,a.rules_verified};
+        if(h.series!=skate_mode || (!h.started && !h.start_sent))h.settings = std::move(a.settings);
+        if(!h.started && !h.start_sent)h.rules={h.preferences.effective_mask(a.rules_mask),a.rules_verified,h.preferences.numerical};
         if(h.series==skate_mode && !h.rules.verified)r.notices.push_back("S.K.A.T.E. setup rules could not be verified; this drop cannot link.");
         if (h.relayed && !h.started) send_offer(r, now);
         break;
@@ -528,7 +532,9 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         for (auto &[key, m] : r.mirrors)
             if (m.mmid == a.mmid && m.state == Mirror::State::open && !m.joined) {
                 m.joined = true;
-                send(r, message(Kind::join, key.leader, key.id));
+                auto join=message(Kind::join,key.leader,key.id);
+                if(m.series==skate_mode){join.rules_mask=m.rules.values;join.rules_revision=skate::rules_format;join.numerical=m.rules.numerical;}
+                send(r,join);
                 note("you joined a linked {} (MMID {:#x}).", m.series, m.mmid);
             }
         break;
@@ -664,7 +670,7 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
                     m.value = turn; m.add = false;
                     if(r.rules.verified) {
                         if(!r.detector_submitted.insert({r.local,turn}).second)break;
-                        m.rules_mask=r.rules.values;
+                        m.rules_mask=r.rules.values;m.rules_revision=skate::rules_format;m.numerical=r.rules.numerical;
                         skate::DetectedAttempt miss;miss.id=static_cast<std::uint64_t>(turn);m.detected=detected_bytes(miss);
                     }
                     send(r, m);
@@ -689,11 +695,14 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
     switch (m.kind) {
     case Kind::offer: {
         if (m.leader != sender || !relayed_mode(m.series)) return;
+        if(m.series==skate_mode && m.rules_revision!=skate::rules_format) {
+            r.notices.push_back("S.K.A.T.E. host does not support configurable rules; use matching builds.");return;
+        }
         if (mirror != r.mirrors.end()) {
             // A copy removed here (full, or left) stays removed while the leader keeps offering it.
             if (mirror->second.state == Mirror::State::gone) mirror->second.gone_at = now;
             if(mirror->second.series==skate_mode && mirror->second.state!=Mirror::State::started) {
-                mirror->second.rules={m.rules_mask,true};
+                mirror->second.rules={m.rules_mask,true,m.numerical};
                 if(mirror->second.state==Mirror::State::waiting)mirror->second.settings=m.settings;
             }
             for (const auto player : m.order) mirror_member(r, mirror->second, player, now);
@@ -706,7 +715,7 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
             if (other.leader == m.leader) destroy_mirror(r, copy, now);
         Mirror copy;
         // A S.K.A.T.E. leader offers its drop only once its setup rules are verified.
-        copy.rules={m.rules_mask,m.series==skate_mode};
+        copy.rules={m.rules_mask,m.series==skate_mode,m.numerical};
         copy.series = m.series; copy.placement = m.placement; copy.settings = m.settings;
         for (const auto player : m.order)
             if (player != r.local && player != m.leader && !contains(copy.members, player)) copy.members.push_back(player);
@@ -724,10 +733,15 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
             if (!r.hosted || r.hosted->id != m.id || r.hosted->started || !r.hosted->relayed ||
                 contains(r.hosted->members, sender))
                 return;
+            if(r.hosted->series==skate_mode && (m.rules_revision!=skate::rules_format || m.rules_mask!=r.hosted->rules.values || m.numerical!=r.hosted->rules.numerical)) {
+                r.notices.push_back("S.K.A.T.E. join refused: rules differ or client requires a matching build.");return;
+            }
             r.hosted->members.push_back(sender);
             add_to_hosted(r);
             note("a player joined your {} (virtual id {:#x}).", r.hosted->series, virtual_id(r, sender));
         } else if (mirror != r.mirrors.end()) {
+            const auto& copy=mirror->second;
+            if(copy.series==skate_mode && (m.rules_revision!=skate::rules_format || m.rules_mask!=copy.rules.values || m.numerical!=copy.rules.numerical))return;
             mirror_member(r, mirror->second, sender, now);
         }
         return;
@@ -757,9 +771,10 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
     case Kind::start: {
         if (m.leader != sender || mirror == r.mirrors.end()) return;
         auto &copy = mirror->second;
+        if(copy.series==skate_mode && copy.state==Mirror::State::started)return;
         if(copy.series==skate_mode) {
-            if(!copy.rules.verified || m.settings.empty())return;
-            copy.rules={m.rules_mask,true};
+            if(!copy.rules.verified || m.settings.empty() || m.rules_revision!=skate::rules_format || m.numerical!=copy.rules.numerical)return;
+            copy.rules={m.rules_mask,true,m.numerical};
             if(copy.settings!=m.settings)copy.pending_settings=m.settings;
         }
         if (!copy.joined) { destroy_mirror(r, copy, now); return; }
@@ -781,11 +796,11 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
             if(!r.running || *r.running!=key) {
                 const auto expected=mirror!=r.mirrors.end()?mirror->second.rules:
                     (m.leader==r.local && r.hosted && r.hosted->id==m.id?r.hosted->rules:skate::Rules{});
-                if(!expected.verified || expected.values!=m.rules_mask)return;
+                if(!expected.verified || expected.values!=m.rules_mask || m.rules_revision!=skate::rules_format || m.numerical!=expected.numerical)return;
             }
             entry.detected=read_detected(m);if(!entry.detected)return;
             if(r.running && *r.running==key) {
-                if(!r.rules.verified || m.rules_mask!=r.rules.values || !contains(r.players,sender))return;
+                if(!r.rules.verified || m.rules_mask!=r.rules.values || m.rules_revision!=skate::rules_format || m.numerical!=r.rules.numerical || !contains(r.players,sender))return;
                 if(!r.detector_submitted.insert({sender,m.value}).second)return;
             }
         }
@@ -1500,7 +1515,7 @@ std::vector<std::vector<std::uint8_t>> tick_throwdown_relay(std::uintptr_t base,
                 const auto turn=r.turns[r.local];
                 if(r.detector_submitted.insert({r.local,turn}).second) {
                     auto m=message(Kind::attempt,r.running->leader,r.running->id);
-                    m.rules_mask=r.rules.values;m.value=turn;m.add=result->landed;m.trick=result->native;
+                    m.rules_mask=r.rules.values;m.rules_revision=skate::rules_format;m.numerical=r.rules.numerical;m.value=turn;m.add=result->landed;m.trick=result->native;
                     try {m.detected=detected_bytes(*result);}catch(...) {
                         result->landed=false;result->signature.clear();result->display.clear();m.add=false;m.detected=detected_bytes(*result);
                         r.notices.push_back("Detected trick exceeds the network limit; attempt failed.");

@@ -20,9 +20,11 @@ Json result(std::initializer_list<Json> rows) {
     auto spins=Json::array();auto spin=Json::object();spin["accepted_spin"]=360;spin["direction"]="FS";spin["starting_stance"]="normal";spins.push_back(spin);j["spins"]=spins;return j;
 }
 }
+void configurable_rules_regressions();
 int main(int argc,char** argv)try {
     using namespace skate;
     phase_regressions();
+    configurable_rules_regressions();
     capture_regressions();
     const auto flip=row("ID_TRICK_KICKFLIP","Kickflip"),bone=row("ID_TRICK_BONEDOLLIE","Boned Ollie"),grind=row("ID_TRICK_TAILSLIDE","Tailslide"),grab=row("ID_TRICK_NOSEGRAB","Nosegrab"),manual=row("ID_TRICK_MANUAL","Manual");
     const Rules all{0xff,true};

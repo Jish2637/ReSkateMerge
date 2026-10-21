@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include "skate_rule_values.h"
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -71,6 +72,7 @@ class TrickSetTracker {
     bool previous_{},active_{},air_{},landing_{},sequence_seen_{},suspended_{};
     bool require_sequence_{true};
     bool bounded_{},grinds_{};
+    skate::NumericalRules rules_;
     std::uint64_t capture_first_{};
     SetSample prev_{};
     std::uint64_t next_{},start_sequence_{},start_wipeouts_{},touchdown_steps_{};
@@ -95,7 +97,7 @@ class TrickSetTracker {
             // Summing heading deltas can leave an exact 115-degree turn a few
             // floating-point ulps below the inclusive boundary. This tolerance
             // only absorbs numerical cancellation, not another gameplay margin.
-            spin.degrees=spin.grind_adjacent && std::abs(net)+1e-6<grind_spin_minimum?0:static_cast<int>(std::floor((std::abs(net)+90)/180))*180;
+            spin.degrees=spin.grind_adjacent && std::abs(net)+1e-6<rules_.grind_minimum?0:static_cast<int>(std::floor((std::abs(net)+rules_.spin_offset)/180))*180;
             if(spin.degrees && spin.goofy && !spin.stance.empty()) {
                 bool fs=net>0; // Y-up signed atan2(x,z): positive is CCW viewed from above.
                 if(*spin.goofy) fs=!fs;
@@ -108,16 +110,16 @@ class TrickSetTracker {
 public:
     TrickSetTracker() = default;
     explicit TrickSetTracker(bool require_sequence):require_sequence_(require_sequence) {}
-    TrickSetTracker(bool require_sequence,bool bounded,bool grinds):require_sequence_(require_sequence),bounded_(bounded),grinds_(grinds) {}
+    TrickSetTracker(bool require_sequence,bool bounded,bool grinds,skate::NumericalRules rules={}):require_sequence_(require_sequence),bounded_(bounded),grinds_(grinds),rules_(rules) {}
     CaptureSpan capture() const {return capture_span(set_.phases,capture_first_,grinds_);}
     void retain_from(std::uint64_t phase) {if(phase && (!capture_first_ || phase<capture_first_))capture_first_=phase;}
     bool excessive_recovery() const {
-        if(!bounded_)return grounded_travel_>=450;
+        if(!bounded_)return grounded_travel_>=rules_.recovery_limit;
         const auto span=capture();
         for(const auto& phase:set_.phases) {
             if(phase.id>span.last)break;
             if(phase.kind=="air" && span.contains(phase.id) && phase.segment && phase.segment<=set_.segments.size() &&
-                set_.segments[phase.segment-1].recovery_travel>=450)return true;
+                set_.segments[phase.segment-1].recovery_travel>=rules_.recovery_limit)return true;
         }
         return false;
     }
@@ -189,7 +191,7 @@ public:
                 // chain. Opposite turns cannot erase the allowance used.
                 else if(!air_ && !grind && (s.state==101 || (prev_.state==101 && ground))) {
                     grounded_travel_+=std::abs(delta);set_.grounded_travel=grounded_travel_;
-                    if(!bounded_ && grounded_travel_>=450)return finish(s.now,"excessive_grounded_rotation",false);
+                    if(!bounded_ && grounded_travel_>=rules_.recovery_limit)return finish(s.now,"excessive_grounded_rotation",false);
                 }
                 if(air&&!air_) {
                     if(bounded_ && !set_.segments.empty())set_.segments.back().recovery_closed=true;
