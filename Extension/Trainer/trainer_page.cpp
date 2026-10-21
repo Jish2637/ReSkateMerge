@@ -451,13 +451,13 @@ void tune_values(SkateMenu &menu, const Model &model, const CallbacksV3 &callbac
     if (p.shown.empty()) note("Nothing matches.");
 }
 
-// TUNE: the trainer's values, then STEEZY LANDINGS. That one is not physics tuning and none of the trainer's
+// TUNE: the trainer's values, then SKETCHY LANDINGS. That one is not physics tuning and none of the trainer's
 // presets or modes touch it, so it sits below them and shows whatever REALISTIC / FUN / EVERYTHING is showing,
 // and before a level loads.
 void tune_tab(SkateMenu &menu, const Model &model, const CallbacksV3 &callbacks, Page &p, const trainer::View &view) {
     tune_values(menu, model, callbacks, p, view);
     ImGui::Spacing();
-    section(menu, "STEEZY LANDINGS");
+    section(menu, "SKETCHY LANDINGS");
     ImGui::PushID("steezy");
     steezy_landings_section(menu);
     ImGui::PopID();

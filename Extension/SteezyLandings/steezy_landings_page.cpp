@@ -1,4 +1,4 @@
-// SANDBOX > TUNE > STEEZY LANDINGS: the switch, presets and Global Chance, the conditions with their own
+// SANDBOX > TUNE > SKETCHY LANDINGS: the switch, presets and Global Chance, the conditions with their own
 // OR/AND and chance, and the advanced settings (a closed dropdown) with the feature's status. Every control edits a
 // copy of the module's settings and hands it back (steezy_landings::apply); the module owns the values,
 // applies them from the next landing and saves them.
@@ -90,7 +90,7 @@ void preset_rows(SkateMenu& menu, const steezy::View& v) {
     ImGui::EndDisabled();
     hint(u.name[0] ? "Saves the values as they are now under this name." : "Type a name first.");
     if (ImGui::SmallButton("Back to defaults")) feedback(menu, steezy::restore_defaults().c_str());
-    hint("Global Chance back to 0 % and every condition off, as Steezy Landings starts. Your presets are kept; the switch stays as it is.");
+    hint("Global Chance back to 0 % and every condition off, as Sketchy Landings starts. Your presets are kept; the switch stays as it is.");
 }
 
 // One condition: its threshold (0 is off), then its OR/AND switch and its own chance, together.
@@ -152,7 +152,7 @@ void steezy_landings_section(SkateMenu& menu) {
 
     begin_card(menu, "steezy-main", "GENERAL", "The heavy sketchy landing animations, on the landings you pick");
     {
-        if (toggle_row(menu, "Steezy Landings",
+        if (toggle_row(menu, "Sketchy Landings",
                        "Plays skate.'s heavy sketchy landing animations on the landings Global Chance and the conditions pick. Off, the game lands as it shipped.",
                        s.enabled, v.status.started))
             changed = true;
@@ -218,7 +218,7 @@ void steezy_landings_section(SkateMenu& menu) {
         section(menu, "STATUS");
         info(menu, "Hooks", !v.status.started ? v.status.problem : v.status.output_wrapped ? "active" : "active (grade written after the game's)");
         info(menu, "Landing selector", v.status.selector_active ? "active" : "not hooked: the heavy animation cannot be asked for");
-        info(menu, "Sketchy flag", v.status.flag_found ? "found" : "not seen yet (found at the first landing with Steezy Landings on)");
+        info(menu, "Sketchy flag", v.status.flag_found ? "found" : "not seen yet (found at the first landing with Sketchy Landings on)");
         info(menu, "Landings", std::format("{} decided, {} picked", v.status.landings, v.status.chosen));
         if (!v.status.last_landing.empty()) info(menu, "Last", v.status.last_landing);
         ImGui::TreePop();
