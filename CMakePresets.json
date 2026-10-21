@@ -10,7 +10,7 @@
       "environment": { "VCLibPackagePath": "${sourceDir}/build/no-vcpkg/vcpkg.user" },
       "toolset": "v145",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "0.1.0-merged.6",
+        "DINGOSDK_VERSION": "0.1.1",
         "DINGOSDK_LAUNCHER_AUTO_UPDATE": "ON",
         "DINGOSDK_RELEASE_REPO": "Jish2637/ReSkateMerge",
         "DINGOSDK_BUILD_TESTS": "OFF",
@@ -20,6 +20,7 @@
         "DINGOSDK_BUILD_LAUNCHER_TESTS": "ON",
         "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "ON",
         "DINGOSDK_BUILD_TRAINER_TESTS": "ON",
+        "DINGOSDK_BUILD_STEEZY_LANDINGS_TESTS": "ON",
         "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": "ON"
       }
     },

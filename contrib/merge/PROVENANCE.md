@@ -79,3 +79,11 @@ and cross-checked against `Engine/Game/Build/supported_build.h`. It does not
 import upstream launcher/runtime/server downloads. Existing saved update choices
 and --no-update remain effective. The repository is made public with the user's
 explicit authorization after source-history review and verified draft assets.
+
+## Version 0.1.1
+
+Based on merged PR #1 at `5ff479d`, including `e12243d` (native landing controls
+and terminology diagnostic gating) and `1f93f07` (Sketchy Landings menu naming).
+The module's internal Steezy Landings names and existing settings filename are
+preserved. The release adds numeric version 0.1.1 and explicitly enables its
+regression suite; game-build pins and the ReSkateMerge update channel are retained.

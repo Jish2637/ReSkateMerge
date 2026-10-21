@@ -6,7 +6,7 @@ in the public [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerge
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.0-merged.6-Windows-x64.zip` from this repository's
+1. Download `ReSkateMerge-v0.1.1-Windows-x64.zip` from this repository's
    release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
@@ -59,6 +59,18 @@ Future normal releases supply `launcher.json`, `ReSkateLauncher.exe` and
 itself and leaves game files, saved preferences, mods and personal presets alone.
 It does not fall back to original upstream ReSkate binaries. The bundled
 recommended preset is unchanged from merged.5.
+
+`v0.1.1` includes PR #1 (`e12243d`, menu-label follow-up `1f93f07`, merged
+as `5ff479d`). **Sandbox > Tune > Sketchy Landings** adds native landing
+animation controls, condition thresholds, OR/AND selection, individual chances,
+Global Chance and saved presets. The feature defaults OFF and Global Chance
+starts at zero. It saves separately in
+`%LOCALAPPDATA%\ReSkate\trainer\steezy-landings.json`.
+Routine terminology diagnostic capture is disabled; renaming and Capture Last
+remain available. Native animation/ownership behavior still needs live testing.
+
+Future releases use incremented numeric versions (for example `0.1.1`, `0.1.2`)
+consistently in the build, launcher, release tag, update manifest and ZIP.
 
 ## Build and verify
 

@@ -1,11 +1,11 @@
-# ReSkateMerge v0.1.0-merged.6 validation
+# ReSkateMerge v0.1.1 validation
 
 Built on Windows x64 with Visual Studio 2026, MSVC 19.51.36247, Windows SDK
 10.0.26100.0 and CMake 4.3.1. Release build with the `vs2026-x64` /
 `merged-release` presets succeeded. Launcher binary updates are compiled on
 exclusively for Jish2637/ReSkateMerge; the multiplayer protocol remains 52.
 
-CTest: **106 passed, 0 failed, 1 skipped**, out of 107 selected tests. The
+CTest: **107 passed, 0 failed, 1 skipped**, out of 108 selected tests. The
 installed-game-only `trainer_tuning_names` check skips because
 `DINGOSDK_TEST_GAME_ROOT` is unset. Set that CMake cache path to a supported game
 installation to run it; invalid explicitly configured game data remains a failure.
@@ -13,6 +13,12 @@ Other tests that optionally read game assets exercised their synthetic fixtures.
 
 Coverage includes:
 
+- PR #1 Sketchy Landings: defaults off, threshold/chance sanitization, OR/AND
+  evaluation and probability ordering, presets and settings serialization,
+  measured airtime/drop freshness, missing measurements and numeric edit
+  retention. The release preset explicitly enables the new `steezy_landings`
+  suite, which packaging requires. Normal builds keep terminology diagnostics
+  at the default zero.
 - Launcher updater: stable/preview selection, ignored drafts, resolved assets,
   update preferences and --no-update, wrong hashes, failed downloads, upstream
   binary rejection, mismatched tags and missing manifests. A copied test process
@@ -88,7 +94,14 @@ checks remain pending; automated checks do not establish game/observer behavior.
 Merged.6 release validation also checks anonymous public release discovery,
 manifest/binary downloads and an isolated older-client fixture updated to the
 published binary hashes, followed by a second up-to-date check. These results are
-recorded separately in `artifacts/public-update-validation.log`. No game launch
+recorded separately in versioned `artifacts/public-update-validation-v*.log` files. No game launch
 or installation is part of that check. The repository history was scanned with
 Gitleaks 8.30.1: all 11 candidates were reviewed as test placeholders, vendored
 code/hashes or the documented public Sentry ingestion key, not credentials.
+
+For v0.1.1, live acceptance remains pending: enable Sketchy Landings and vary its
+conditions/chances; verify only the local player's selected landings change,
+turning it off restores native behavior, world transitions clear active state,
+and settings/presets persist across restart. Check terminology renaming/Capture
+Last still work without routine diagnostic captures. Automated model tests do
+not establish native hook behavior or in-game animation quality.
