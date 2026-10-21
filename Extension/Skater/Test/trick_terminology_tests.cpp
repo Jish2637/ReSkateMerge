@@ -171,9 +171,21 @@ int main() {
         std::vector<ed::Observation> frame{row};ed::ConfirmedCombos cache;
         auto matches=ed::resolve_frame(rules,frame);check(matches[0].rule);
         ed::retain_combos(rules,frame,matches,cache);
+        // Measurement grows within 180: keep a confirmed result during drift.
+        frame[0].measured_degrees=200;frame[0].spin_valid=false;
+        matches=ed::resolve_frame(rules,frame);check(!matches[0].rule);
+        ed::retain_combos(rules,frame,matches,cache);check(matches[0].rule);
+        frame[0].spin_valid=true;
         frame[0].labels[2]="360";frame[0].measured_degrees=365;
         matches=ed::resolve_frame(rules,frame);check(!matches[0].rule);
-        ed::retain_combos(rules,frame,matches,cache);check(matches[0].rule && matches[0].rule->id==77);
+        ed::retain_combos(rules,frame,matches,cache);check(!matches[0].rule);
+        // Higher native spins restore all native fields with no stale alias.
+        for(const auto spin:{540,720,900,1080}) {
+            frame[0].labels[2]=std::to_string(spin);frame[0].measured_degrees=spin+5;
+            matches=ed::resolve_frame(rules,frame);
+            ed::retain_combos(rules,frame,matches,cache);check(!matches[0].rule);
+        }
+        frame[0].labels[2]="360";frame[0].measured_degrees=365;
         auto full=bird;full.id=78;full.spin=360;full.name="Full Spin";rules.push_back(full);
         matches=ed::resolve_frame(rules,frame);ed::retain_combos(rules,frame,matches,cache);
         check(matches[0].rule && matches[0].rule->id==78);
@@ -508,6 +520,7 @@ int main() {
         check(ed::match({rule},row,{row}).rule);
         row.direction="FS";check(!ed::match({rule},row,{row}).rule);row.direction="BS";
         row.early_degrees=360;check(!ed::match({rule},row,{row}).rule);
+        row.labels[2]="360";row.early_degrees=180;check(!ed::match({rule},row,{row}).rule);
         row.early_degrees=0;row.labels[2]="180";row.spin_valid=true;check(ed::match({rule},row,{row}).rule);
         rule.first.native_id="ID_TRICK_HARDFLIP";row.native_id=rule.first.native_id;row.labels[0]="Localized Hardflip";
         check(ed::match({rule},row,{row}).rule);row.native_id="ID_TRICK_HEELFLIP";check(!ed::match({rule},row,{row}).rule);

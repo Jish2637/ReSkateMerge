@@ -92,8 +92,14 @@ inline std::vector<std::uint64_t> handles(const Match& match,std::uint64_t first
     std::vector<std::uint64_t> out{first};out.insert(out.end(),match.following.begin(),match.following.end());return out;
 }
 inline bool spin_matches(int count,const std::string& direction,const Observation& row) {
-    return !count || ((((normalized(row.labels[2])==std::to_string(count) && row.spin_valid) || (row.early_degrees==count && (normalized(row.labels[2])=="180" || normalized(row.labels[2])=="360" || normalized(row.labels[2])=="540" || normalized(row.labels[2])=="720")))) &&
-        (direction=="Either" || direction==row.direction));
+    if(!count)return true;
+    const auto native=normalized(row.labels[2]);
+    // Early recognition may lead native acknowledgement, never undercut a
+    // larger count that the game has already reported.
+    const int acknowledged=native=="180"?180:native=="360"?360:native=="540"?540:native=="720"?720:0;
+    return ((native==std::to_string(count) && row.spin_valid) ||
+            (row.early_degrees==count && acknowledged && acknowledged<=count)) &&
+           (direction=="Either" || direction==row.direction);
 }
 inline bool spin_representative(const Component& part,const Observation& row,int count,const std::string& direction,const std::vector<Observation>& frame) {
     if(!spin_only(part))return true;
