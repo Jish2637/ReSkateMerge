@@ -3,6 +3,7 @@
 #include "trick_terminology.h"
 #include "Extension/HallOfMeat/hall_of_meat_hud.h"
 #include "trick_binding_probe.h"
+#include "terminology_diagnostics.h"
 #include "Extension/Progression/local_entitlement_trigger_runtime.h"
 #include <intrin.h>
 #include "native_combo_rows.h"
@@ -163,9 +164,11 @@ std::uint64_t internal_publish(Address manager,Handle target,Address type,const 
     }catch(...){}
     if(native)reinterpret_cast<void(*)(Address*)>(base+addr::engine::native_text_release)(&native);
     if(prepared && !cached)try {
+        if constexpr (diagnostics::enabled) {
         auto j=Json::object();j["kind"]="terminology_prewrite";j["target"]=target;j["model_handle"]=candidate.row;j["field_index"]=candidate.field;
         j["native"]=candidate.native;j["forwarded"]=candidate.replacement;j["published"]=result;
         logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
+        }
     }catch(...){}
     SetLastError(after);return result;
 }
@@ -260,6 +263,7 @@ void sample_spin(State& s, std::uint64_t now) {
     s.measurement_valid=sample.valid && s.listener_ready;
     if (const auto finished=s.phases.update(sample)) {
         s.sets[finished->id]=*finished;
+        if constexpr (diagnostics::enabled) {
         auto event=Json::object();event["kind"]="terminology_rotation_set";event["sequence"]=finished->id;
         event["outcome"]=finished->outcome;event["rotation_complete"]=finished->rotation_complete;
         event["native_sequence_ends"]=sequence_ends.load();event["segments"]=Json::array();
@@ -269,6 +273,7 @@ void sample_spin(State& s, std::uint64_t now) {
             event["segments"].push_back(std::move(part));
         }
         logging::write(logging::Level::info,logging::Channel::runtime,event.dump());
+        }
         s.phase_sequence=finished->id;
         if (finished->landed!=true || !finished->rotation_complete) s.invalid_sequences.insert(finished->id);
     }
@@ -279,11 +284,13 @@ void sample_spin(State& s, std::uint64_t now) {
     while(s.invalid_sequences.size()>64)s.invalid_sequences.erase(s.invalid_sequences.begin());
     for (const auto& a : s.spins.attempts) if (a->end && !a->emitted) {
         a->emitted = true;
+        if constexpr (diagnostics::enabled) {
         auto event = Json::object(); event["kind"] = "terminology_spin";
         event["attempt"] = a->id; event["entity"] = a->entity; event["start_ms"] = a->start;
         event["end_ms"] = a->end; event["signed_yaw"] = a->net; event["air_yaw"] = a->air_net; event["valid"] = a->valid;
         event["landed"] = a->landed; event["goofy"] = a->goofy ? Json(*a->goofy) : Json{};
         logging::write(logging::Level::info, logging::Channel::runtime,event.dump());
+        }
     }
 }
 std::uint32_t schema(Address type) { return read<std::uint32_t>(read<Address>(type)); }
@@ -308,21 +315,26 @@ std::uint64_t publish_native_model(Address manager,Handle target,Address type,co
     return internal_publish(manager,target,type,source,flag,caller,original);
 }
 void* begin_label_binding_probe(std::uintptr_t vm,std::uint32_t pc,bool profiled) noexcept {
-    return binding_probe::begin(vm,pc,profiled);
+    if constexpr (diagnostics::enabled)return binding_probe::begin(vm,pc,profiled);
+    else return nullptr;
 }
 void end_label_binding_probe(void* token) noexcept {binding_probe::end(token);}
 namespace {
 void drain_binding_probe(std::uint64_t now) {
+    if constexpr (diagnostics::enabled) {
     static std::uint64_t next{},stats{};static bool announced{};
     if(!announced && binding_probe::enabled.load()) {
         LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);
+        if constexpr (diagnostics::enabled) {
         auto j=Json::object();j["kind"]="terminology_binding_probe_ready";j["build"]="test26";
         j["graph"]=binding_probe::graph;j["qpc_frequency"]=frequency.QuadPart;j["observation_only"]=true;
-        logging::write(logging::Level::info,logging::Channel::runtime,j.dump());announced=true;
+        logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
+        }announced=true;
     }
     if(now<next)return;next=now+50;
     binding_probe::Record r;
     for(unsigned n=0;n<8 && binding_probe::pop(r);++n) {
+        if constexpr (diagnostics::enabled) {
         auto j=Json::object();j["kind"]="terminology_binding_probe";j["graph"]=binding_probe::graph;
         j["entry_pc"]=r.pc;j["thread"]=r.thread;j["profiled"]=r.profiled;
         j["entry_qpc"]=r.start;j["exit_qpc"]=r.finish;j["entry_ms"]=r.start_ms;j["exit_ms"]=r.finish_ms;
@@ -335,8 +347,9 @@ void drain_binding_probe(std::uint64_t now) {
         j["output"]=r.output.bytes.data();j["output_valid"]=r.output.valid;
         j["localized"]=r.localized.bytes.data();j["localized_valid"]=r.localized.valid;
         logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
+        }
     }
-    if(announced && now>=stats) {
+    if(diagnostics::enabled && announced && now>=stats) {
         stats=now+5000;auto j=Json::object();j["kind"]="terminology_binding_probe_stats";
         j["prewrite_calls"]=prewrite_calls.load();j["prewrite_routes"]=prewrite_routes.load();
         j["prewrite_fields"]=prewrite_fields.load();j["prewrite_inputs"]=prewrite_inputs.load();j["prewrite_matches"]=prewrite_matches.load();j["prewrite_cached"]=prewrite_cached.load();j["prewrite_discovered"]=prewrite_discovered.load();
@@ -344,6 +357,7 @@ void drain_binding_probe(std::uint64_t now) {
         j["recognized"]=binding_probe::recognized.load();j["rejected"]=binding_probe::rejected.load();
         j["queued_total"]=binding_probe::emitted.load();j["dropped"]=binding_probe::dropped.load();
         logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
+    }
     }
 }
 }
@@ -384,7 +398,7 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
     editor::set_enabled(enabled);
     if (!in_unlock) {client_thread.store(GetCurrentThreadId());editor::service(now);}
     publication_on.store(playing && enabled);
-    binding_probe::enabled.store(playing && enabled,std::memory_order_relaxed);
+    binding_probe::enabled.store(diagnostics::enabled && playing && enabled,std::memory_order_relaxed);
     if(!in_unlock)drain_binding_probe(now);
     if(!playing || !enabled)binding_probe::snapshot.store(nullptr);
     try {
@@ -539,9 +553,10 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
                         dir=normalized(n.labels[1]);if(dir=="bs" || dir=="fs")observation.direction=dir=="bs"?"BS":"FS";
                     }
                 }
-                const auto signature=Json(n.labels).dump()+observation.direction+std::to_string(observation.early_degrees)+(observation.spin_valid?"valid":"invalid")+std::to_string(observation.measured_spin);
-                if (enabled && s.recorded<4096 && s.observations[n.model.handle]!=signature) {
+                const auto signature=diagnostics::enabled ? Json(n.labels).dump()+observation.direction+std::to_string(observation.early_degrees)+(observation.spin_valid?"valid":"invalid")+std::to_string(observation.measured_spin) : std::string{};
+                if (diagnostics::enabled && enabled && s.recorded<4096 && s.observations[n.model.handle]!=signature) {
                     s.observations[n.model.handle]=signature;++s.recorded;
+                    if constexpr (diagnostics::enabled) {
                     auto j=Json::object();j["kind"]="terminology_observation";j["model_handle"]=n.model.handle;
                     j["candidate_attempt"]=observation.attempt;j["spin_valid"]=observation.spin_valid;j["native_id"]=observation.native_id;j["phase_id"]=observation.phase;j["phase_kind"]=observation.phase_kind;j["early_spin"]=observation.early_degrees;j["owner_verified"]=false;
                     j["air_yaw"]=observation.air_degrees;j["recovery_yaw"]=observation.recovery_degrees;j["accepted_yaw"]=observation.measured_degrees;j["measured_spin"]=observation.measured_spin;j["native_sequence_ends"]=sequence_ends.load();j["body_direction_candidate"]=observation.direction;
@@ -550,6 +565,7 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
                         "body_flip_rotation","body_flip_direction","dark_catch","dark_flip","manual_type","underflip","metadata","completed_info"};
                     for (unsigned i=0;i<fields.size();++i) {j["labels"][keys[i]]=n.labels[i];j["raw_labels"][keys[i]]=n.original[i];}
                     logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
+                    }
                 }
                 native.push_back(std::move(n));frame.push_back(std::move(observation));
             } catch (const std::exception& e) {
@@ -615,10 +631,12 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
                 } else c.text(n.targets[slot],wanted[i][slot]);
                 if (aliasing[i]) row.edits[slot].applied(n.original[slot],wanted[i][slot]);else row.edits[slot].active=false;
                 if (slot==0) {
+                    if constexpr (diagnostics::enabled) {
                     auto j=Json::object();j["kind"]="terminology_publication";j["model_handle"]=n.model.handle;
                     j["before"]=n.raw[slot];j["requested"]=wanted[i][slot];j["readback"]=c.text(n.targets[slot],1024);
                     j["at_ui_boundary"]=in_unlock;j["rule_id"]=replacements[i].rule?replacements[i].rule->id:0;
                     logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
+                    }
                 }
             }
         }
@@ -629,10 +647,12 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
         // native scoring writer/unlock scripts have completed. Text interception
         // remains early; it must never insert/remove stack items recursively.
         if(!in_unlock && !incoming_text && !profile_runtime::executing_expression)for(const auto& event:row_presenter().service(c,combo_requests,active_combo_rules))if(row_events++<128 || event.action=="inserted") {
+            if constexpr (diagnostics::enabled) {
             auto j=Json::object();j["kind"]="terminology_combo_row";j["action"]=event.action;j["message"]=event.message;
             j["source_handle"]=event.source;j["parent_handle"]=event.parent;j["custom_handle"]=event.row;j["rule_id"]=event.rule;
             j["ui_only"]=true;j["score_value"]=0;
             logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
+            }
         }
         s.known_fields=std::move(current_fields);s.baseline=false;
         for (auto it=s.associations.begin();it!=s.associations.end();) if (!s.rows.contains(it->first)) it=s.associations.erase(it);else ++it;
