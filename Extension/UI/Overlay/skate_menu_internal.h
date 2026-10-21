@@ -3,6 +3,7 @@
 #include <initializer_list>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace dingosdk::overlay::detail {
@@ -125,6 +126,9 @@ void drone_page(SkateMenu&, const Model&, const CallbacksV3&);
 // Extension/Trainer/trainer_page.cpp: the SANDBOX page (once the Trainer).
 void trainer_page(SkateMenu&, const Model&, const CallbacksV3&);
 bool trainer_page_wanted();
+// SANDBOX > TUNE > STEEZY LANDINGS, below FINE TUNING / EVERY VALUE whichever of REALISTIC, FUN or EVERYTHING
+// is showing (Extension/SteezyLandings/steezy_landings_page.cpp).
+void steezy_landings_section(SkateMenu&);
 // Skater > CHEATS: noclip, No Bail and the boosts (skate_menu_skater.cpp).
 void cheats_tab(SkateMenu&, const Model&, const CallbacksV3&);
 // The addons' own pages (skate_menu_skater.cpp), and the ADDONS page itself (skate_menu_addons.cpp).

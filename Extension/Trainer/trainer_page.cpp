@@ -244,7 +244,7 @@ void dial_row(SkateMenu &menu, const CallbacksV3 &callbacks, Page &p, const trai
 // One screen for everything that changes how the game plays: the presets as dials and
 // switches, the trick multipliers, the player's own presets and the values themselves. All of
 // them show the same values, so none can disagree with another.
-void tune_tab(SkateMenu &menu, const Model &model, const CallbacksV3 &callbacks, Page &p, const trainer::View &view) {
+void tune_values(SkateMenu &menu, const Model &model, const CallbacksV3 &callbacks, Page &p, const trainer::View &view) {
     if (!view.ready) {
         begin_card(menu, "tune-wait", "PHYSICS TUNING");
         note(view.status.c_str());
@@ -449,6 +449,18 @@ void tune_tab(SkateMenu &menu, const Model &model, const CallbacksV3 &callbacks,
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
             value_row(menu, callbacks, p, view, view.rows[p.shown[static_cast<std::size_t>(i)]], with_group, friendly);
     if (p.shown.empty()) note("Nothing matches.");
+}
+
+// TUNE: the trainer's values, then STEEZY LANDINGS. That one is not physics tuning and none of the trainer's
+// presets or modes touch it, so it sits below them and shows whatever REALISTIC / FUN / EVERYTHING is showing,
+// and before a level loads.
+void tune_tab(SkateMenu &menu, const Model &model, const CallbacksV3 &callbacks, Page &p, const trainer::View &view) {
+    tune_values(menu, model, callbacks, p, view);
+    ImGui::Spacing();
+    section(menu, "STEEZY LANDINGS");
+    ImGui::PushID("steezy");
+    steezy_landings_section(menu);
+    ImGui::PopID();
 }
 
 void trick_heights(SkateMenu &menu, const CallbacksV3 &callbacks, Page &p, const trainer::View &view) {

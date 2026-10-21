@@ -18,6 +18,7 @@
 #include "Engine/Game/World/client_state.h"
 #include "Extension/HallOfMeat/hall_of_meat.h"
 #include "Extension/RoadRash/road_rash.h"
+#include "Extension/SteezyLandings/steezy_landings.h"
 #include "Extension/BoardBreak/board_break.h"
 #include "Extension/BoardBreak/board_break_audio.h"
 #include "Extension/ReplayKeyframes/replay_keyframes.h"
@@ -1095,6 +1096,7 @@ void update_model(std::uintptr_t client, TickState& frame) {
     }
     dingosdk::hall_of_meat::on_client_tick();
     dingosdk::road_rash::on_client_tick(client);
+    dingosdk::steezy_landings::on_client_tick();
     dingosdk::drone::outfit::on_client_tick();
     dingosdk::board_break::on_client_tick(client);
     dingosdk::grind_exit_control::on_client_tick(client);

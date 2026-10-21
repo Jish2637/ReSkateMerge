@@ -1,3 +1,4 @@
+#include "numeric_edit.h"
 #include "Engine/Core/Platform/launcher_support.h"
 #include "skate_menu_internal.h"
 #include "Extension/Skater/drone_flight.h"
@@ -523,13 +524,17 @@ bool slider_with_box(const char* id, Value* value, Value low, Value high, ImGuiS
     if (boxed) {
         ImGui::SameLine(0, gap);
         ImGui::SetNextItemWidth(box_width);
-        Value typed = *value;
+        static detail::NumericEdits<Value> edits;
+        const auto exact_id = ImGui::GetID("##exact");
+        Value typed = edits.value(exact_id, *value, ImGui::GetActiveID() == exact_id || GImGui->ActiveIdPreviousFrame == exact_id);
         type("##exact", &typed, box);
+        if (ImGui::IsItemActive()) edits.retain(exact_id, typed);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Type an exact value");
         if (ImGui::IsItemDeactivatedAfterEdit()) {
             *value = (flags & ImGuiSliderFlags_AlwaysClamp) ? std::clamp(typed, low, high) : typed;
             changed = true;
         }
+        if (!ImGui::IsItemActive()) edits.release(exact_id);
     }
     ImGui::PopID();
     ImGui::EndGroup();

@@ -48,6 +48,7 @@ add_library(dingosdk_overlay STATIC
     Extension/UI/Overlay/multiplayer_session.cpp
     Extension/Skater/trick_editor_page.cpp
     Extension/Trainer/trainer_page.cpp
+    Extension/SteezyLandings/steezy_landings_page.cpp
     Extension/Music/music_page.cpp
     Extension/Trainer/trainer_view.cpp
     Extension/HallOfMeat/hall_of_meat_overlay.cpp
