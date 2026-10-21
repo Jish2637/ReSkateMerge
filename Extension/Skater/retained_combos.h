@@ -5,8 +5,9 @@
 #include <set>
 
 namespace dingosdk::trick_terminology::editor {
-// Keep a confirmed result through further rotation, but never create a match
-// from an unconfirmed angle. Fresh exact matches always take precedence.
+// Keep a confirmed result through measurement drift within its native spin
+// category. A new native rotation count invalidates the old exact-spin rule.
+// Fresh exact matches always take precedence.
 struct ConfirmedCombo {
     Rule rule;
     std::vector<Observation> evidence;
@@ -43,8 +44,8 @@ inline void retain_combos(const std::vector<Rule>& rules,const std::vector<Obser
             for(unsigned slot=0;slot<13;++slot)if(slot!=2 && row->labels[slot]!=old.labels[slot])valid=false;
             const auto before=rotation_number(normalized(old.labels[2])),after=rotation_number(normalized(row->labels[2]));
             if(before) {
-                if(!old.spin_valid || !after || after<before || std::abs(row->measured_degrees)<std::abs(old.measured_degrees))valid=false;
-                advanced=advanced || after>before || std::abs(row->measured_degrees)>std::abs(old.measured_degrees);
+                if(!old.spin_valid || !after || after!=before || std::abs(row->measured_degrees)<std::abs(old.measured_degrees))valid=false;
+                advanced=advanced || std::abs(row->measured_degrees)>std::abs(old.measured_degrees);
                 row->labels[2]=old.labels[2];row->spin_valid=old.spin_valid;row->early_degrees=0;
             } else if(row->labels[2]!=old.labels[2])valid=false;
         }
