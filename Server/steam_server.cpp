@@ -1,4 +1,5 @@
 #include "steam_server.h"
+#include "msc_presence.h"
 #include "server_text.h"
 #include "Extension/Multiplayer/Net/protocol.h"
 #ifdef _WIN32
@@ -129,6 +130,9 @@ std::string server_tags(const Advertisement &a) {
                 std::to_string(a.players) + ",c" + std::to_string(a.max_players) + (a.password ? ",w1" : ",w0");
     if (a.direct_port) tags += ",d" + std::to_string(a.direct_port);
     tags += ",m" + tag_text(a.map, 24);
+    // An optional Steam discovery tag; stock ReSkate ignores unknown tags.
+    // Keep it before the final name token, which consumes the rest of the list.
+    if(msc_presence::supported(a.name))tags+=",jfp1";
     tags += ",n" + tag_text(a.name, 127 - tags.size() - 2);
     return tags;
 }

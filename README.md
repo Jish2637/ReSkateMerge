@@ -6,7 +6,7 @@ in the public [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerge
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.2-Windows-x64.zip` from this repository's
+1. Download `ReSkateMerge-v0.1.3-Windows-x64.zip` from this repository's
    release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
@@ -145,3 +145,7 @@ Note: This is a Fork of ReSkate and NOT a Standalone Mod.
 ## Credits
 
 Built from [ReSkate](https://github.com/Dingo-Shenanigans/ReSkate) and [Jish's First Person Mod](https://github.com/Jish2637/JishsFirstPersonMod), with native integration and adjustments maintained here.
+
+## MSC Hub and standard server (v0.1.3)
+
+The client includes MSC shop/profile/collection, transfers, leaderboards, graphical activities and staff tools in both Insert menu styles. The tracked Server source now includes MSC; server binary version 2.1.2 is packaged separately with this release. Both updaters use Jish2637/ReSkateMerge. See [installation, updating, rollback and build instructions](contrib/merge/MSC_RELEASE.md). Existing economy settings, protocol 52 and ordinary-client compatibility remain. Roulette, Slots and Blackjack are deferred.

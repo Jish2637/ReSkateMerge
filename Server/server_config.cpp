@@ -1,4 +1,5 @@
 #include "server_config.h"
+#include "msc_commands.h"
 #include <mutex>
 #include "Engine/Core/Json/json.h"
 #include "Engine/Core/Platform/path_text.h"
@@ -82,6 +83,7 @@ Layout layout(const ServerConfig &c) {
 
     auto &maps = root.section("maps");
     maps.set("map", c.map);
+    maps.set("default_map", c.default_map);
     auto pool = Json::array();
     for (const auto &map : c.map_pool) pool.push_back(map);
     maps.set("pool", std::move(pool));
@@ -217,12 +219,53 @@ Layout layout(const ServerConfig &c) {
         commands.push_back(std::move(item));
     }
     root.set("commands", std::move(commands));
+    auto &shop = root.section("shop");
+    shop.set("enabled", c.shop.enabled); shop.set("tag_price", c.shop.tag_price); shop.set("colour_price", c.shop.colour_price); shop.set("shimmer_price", c.shop.shimmer_price);
+    shop.set("joinmsg_enabled",c.shop.joinmsg_enabled);
+    shop.set("colourbundle_enabled",c.shop.colourbundle_enabled);
+    shop.set("shimmerbundle_enabled",c.shop.shimmerbundle_enabled);
+    shop.set("joinmsg_price",c.shop.joinmsg_price);
+    shop.set("colourbundle_price",c.shop.colourbundle_price);
+    shop.set("shimmerbundle_price",c.shop.shimmerbundle_price);
+    shop.set("joinmsg_max_length",c.shop.joinmsg_max_length);
+    shop.set("joinmsg_cooldown_seconds",c.shop.joinmsg_cooldown_seconds);
+    auto &wagers=root.section("wagers");
+    wagers.set("enabled",c.wagers.enabled);
+    wagers.set("coinflip_enabled",c.wagers.coinflip_enabled);
+    wagers.set("dice_enabled",c.wagers.dice_enabled);
+    wagers.set("highlow_enabled",c.wagers.highlow_enabled);
+    wagers.set("min_stake",c.wagers.min_stake);
+    wagers.set("coinflip_max_stake",c.wagers.coinflip_max_stake);
+    wagers.set("dice_max_stake",c.wagers.dice_max_stake);
+    wagers.set("highlow_max_stake",c.wagers.highlow_max_stake);
+    wagers.set("lobby_timeout_seconds",c.wagers.lobby_timeout_seconds);
+    wagers.set("highlow_timeout_seconds",c.wagers.highlow_timeout_seconds);
+    auto &stats = root.section("player_stats");
+    stats.set("version", 2);
+    stats.set("enabled", c.player_stats.enabled);
+    stats.set("vip_role", c.player_stats.vip_role);
+    stats.set("idle_seconds", c.player_stats.idle_seconds);
+    stats.set("hourly_points", c.player_stats.hourly_points);
+    stats.set("daily_minutes", c.player_stats.daily_minutes);
+    stats.set("daily_points", c.player_stats.daily_points);
+    stats.set("streak_step", c.player_stats.streak_step);
+    stats.set("streak_cap", c.player_stats.streak_cap);
+    stats.set("event_points", c.player_stats.event_points);
+    stats.set("rewarded_events_per_day", c.player_stats.rewarded_events_per_day);
+    stats.set("vip_hours", c.player_stats.vip_hours);
+    stats.set("leaderboard_minutes", c.player_stats.leaderboard_minutes);
+
+    auto &spam = root.section("object_spam_alerts");
+    spam.set("enabled", c.object_spam_alerts.enabled);
+    spam.set("count", c.object_spam_alerts.count);
+    spam.set("window_seconds", c.object_spam_alerts.window_seconds);
+    spam.set("cooldown_seconds", c.object_spam_alerts.cooldown_seconds);
     return root;
 }
 // Bans have a file of their own, beside the config.
-Json bans_json(const ServerConfig &c) {
+Json moderation_json(const std::vector<MultiplayerBan> &entries) {
     auto bans = Json::array();
-    for (const auto &ban : c.bans) {
+    for (const auto &ban : entries) {
         auto row = Json::object();
         row["id"] = std::to_string(ban.id);
         row["name"] = ban.name;
@@ -305,6 +348,122 @@ ServerConfig load_config(const std::filesystem::path &file, std::vector<std::str
         return found ? found->template get<T>() : fallback;
     };
     c.name = get("server", "name", c.name);
+    c.shop.enabled = get("shop", "enabled", c.shop.enabled);
+    for(const auto key:{"tag_price","colour_price","shimmer_price"}) if(const auto *v=find("shop",key)) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("shop prices must be integers from 1 to 1000000.");
+        (std::string_view(key)=="tag_price"?c.shop.tag_price:std::string_view(key)=="shimmer_price"?c.shop.shimmer_price:c.shop.colour_price)=v->get<unsigned>();
+    }
+    c.shop.joinmsg_enabled=get("shop","joinmsg_enabled",c.shop.joinmsg_enabled);
+    c.shop.colourbundle_enabled=get("shop","colourbundle_enabled",c.shop.colourbundle_enabled);
+    c.shop.shimmerbundle_enabled=get("shop","shimmerbundle_enabled",c.shop.shimmerbundle_enabled);
+    if(const auto *v=find("shop","joinmsg_price")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("shop.joinmsg_price must be an integer from 1 to 1000000.");
+        c.shop.joinmsg_price=v->get<unsigned>();
+    }
+    if(const auto *v=find("shop","colourbundle_price")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("shop.colourbundle_price must be an integer from 1 to 1000000.");
+        c.shop.colourbundle_price=v->get<unsigned>();
+    }
+    if(const auto *v=find("shop","shimmerbundle_price")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("shop.shimmerbundle_price must be an integer from 1 to 1000000.");
+        c.shop.shimmerbundle_price=v->get<unsigned>();
+    }
+    if(const auto *v=find("shop","joinmsg_max_length")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("shop.joinmsg_max_length must be an integer from 1 to 1000000.");
+        c.shop.joinmsg_max_length=v->get<unsigned>();
+    }
+    if(const auto *v=find("shop","joinmsg_cooldown_seconds")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("shop.joinmsg_cooldown_seconds must be an integer from 1 to 1000000.");
+        c.shop.joinmsg_cooldown_seconds=v->get<unsigned>();
+    }
+    c.wagers.enabled=get("wagers","enabled",c.wagers.enabled);
+    c.wagers.coinflip_enabled=get("wagers","coinflip_enabled",c.wagers.coinflip_enabled);
+    c.wagers.dice_enabled=get("wagers","dice_enabled",c.wagers.dice_enabled);
+    c.wagers.highlow_enabled=get("wagers","highlow_enabled",c.wagers.highlow_enabled);
+    if(const auto *v=find("wagers","min_stake")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.min_stake must be an integer from 1 to 1000000.");
+        c.wagers.min_stake=v->get<unsigned>();
+    }
+    if(const auto *v=find("wagers","coinflip_max_stake")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.coinflip_max_stake must be an integer from 1 to 1000000.");
+        c.wagers.coinflip_max_stake=v->get<unsigned>();
+    }
+    if(const auto *v=find("wagers","dice_max_stake")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.dice_max_stake must be an integer from 1 to 1000000.");
+        c.wagers.dice_max_stake=v->get<unsigned>();
+    }
+    if(const auto *v=find("wagers","highlow_max_stake")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.highlow_max_stake must be an integer from 1 to 1000000.");
+        c.wagers.highlow_max_stake=v->get<unsigned>();
+    }
+    if(const auto *v=find("wagers","lobby_timeout_seconds")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.lobby_timeout_seconds must be an integer from 1 to 1000000.");
+        c.wagers.lobby_timeout_seconds=v->get<unsigned>();
+    }
+    if(const auto *v=find("wagers","highlow_timeout_seconds")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.highlow_timeout_seconds must be an integer from 1 to 1000000.");
+        c.wagers.highlow_timeout_seconds=v->get<unsigned>();
+    }
+    c.player_stats.enabled = get("player_stats", "enabled", c.player_stats.enabled);
+    c.player_stats.vip_role = get("player_stats", "vip_role", c.player_stats.vip_role);
+    if (const auto *v = find("player_stats", "idle_seconds")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.idle_seconds must be an integer from 0 to 100000.");
+        c.player_stats.idle_seconds = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "hourly_points")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.hourly_points must be an integer from 0 to 100000.");
+        c.player_stats.hourly_points = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "daily_minutes")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.daily_minutes must be an integer from 0 to 100000.");
+        c.player_stats.daily_minutes = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "daily_points")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.daily_points must be an integer from 0 to 100000.");
+        c.player_stats.daily_points = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "streak_step")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.streak_step must be an integer from 0 to 100000.");
+        c.player_stats.streak_step = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "streak_cap")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.streak_cap must be an integer from 0 to 100000.");
+        c.player_stats.streak_cap = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "event_points")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.event_points must be an integer from 0 to 100000.");
+        c.player_stats.event_points = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "rewarded_events_per_day")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.rewarded_events_per_day must be an integer from 0 to 100000.");
+        c.player_stats.rewarded_events_per_day = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "vip_hours")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.vip_hours must be an integer from 0 to 100000.");
+        c.player_stats.vip_hours = v->get<unsigned>();
+    }
+    if (const auto *v = find("player_stats", "leaderboard_minutes")) {
+        if (!v->is_number_integer() || v->get<double>() < 0 || v->get<double>() > 100000) throw std::runtime_error("player_stats.leaderboard_minutes must be an integer from 0 to 100000.");
+        c.player_stats.leaderboard_minutes = v->get<unsigned>();
+    }
+    // Upgrade the previous MSC default once, while keeping future explicit overrides.
+    const auto *stats_version = find("player_stats", "version");
+    if (stats_version && (!stats_version->is_number_integer() || stats_version->get<double>() < 1 || stats_version->get<double>() > 2))
+        throw std::runtime_error("player_stats.version must be 1 or 2.");
+    if ((!stats_version || stats_version->get<unsigned>() < 2) && c.player_stats.daily_minutes == 10)
+        c.player_stats.daily_minutes = 5;
+    if (stats_version && stats_version->get<unsigned>() < 2) moved = true;
+    c.object_spam_alerts.enabled = get("object_spam_alerts", "enabled", c.object_spam_alerts.enabled);
+    const auto spam_number = [&](std::string_view key, unsigned fallback, unsigned maximum) {
+        const auto *value = find("object_spam_alerts", key);
+        if (!value) return fallback;
+        if (!value->is_number_integer() || value->get<std::uint64_t>() < 1 || value->get<std::uint64_t>() > maximum)
+            throw std::runtime_error("object_spam_alerts." + std::string(key) + " must be an integer from 1 to " + std::to_string(maximum) + ".");
+        return static_cast<unsigned>(value->get<std::uint64_t>());
+    };
+    c.object_spam_alerts.count = spam_number("count", c.object_spam_alerts.count, 10000);
+    c.object_spam_alerts.window_seconds = spam_number("window_seconds", c.object_spam_alerts.window_seconds, 300);
+    c.object_spam_alerts.cooldown_seconds = spam_number("cooldown_seconds", c.object_spam_alerts.cooldown_seconds, 3600);
     c.password = get("server", "password", c.password);
     c.welcome = get("server", "welcome_message", c.welcome, {"welcome"});
     c.chat_color = get("server", "chat_color", c.chat_color);
@@ -337,6 +496,7 @@ ServerConfig load_config(const std::filesystem::path &file, std::vector<std::str
     c.global_bans = get("access", "use_global_bans", c.global_bans, {"global_bans"});
 
     c.map = get("maps", "map", c.map);
+    c.default_map = get("maps", "default_map", c.default_map);
     if (const auto *pool = find("maps", "pool", {"map_pool"}); pool && pool->is_array())
         for (const auto &map : *pool)
             if (map.is_string() && !map.string().empty()) c.map_pool.push_back(map.string());
@@ -517,6 +677,29 @@ ServerConfig load_config(const std::filesystem::path &file, std::vector<std::str
             throw std::runtime_error("Cannot read " + path_utf8(bans) + ": " + e.what());
         }
     }
+    const auto read_restrictions = [&](const std::filesystem::path &file, std::vector<VoiceMute> &entries, bool timed_only) {
+        if (!std::filesystem::exists(file)) return;
+        try {
+            std::ifstream in(file, std::ios::binary);
+            std::stringstream held; held << in.rdbuf();
+            const auto rows = Json::parse(held.str());
+            if (!rows.is_array()) throw std::runtime_error("Chat restrictions must be a JSON list.");
+            for (const auto &row : rows) {
+                const auto id = steam_id(row.at("id"));
+                if (!multiplayer::individual_steam_id(id)) throw std::runtime_error("Invalid restriction SteamID.");
+                if (timed_only && (!row.contains("expires") || !row.at("expires").is_number_integer()))
+                    throw std::runtime_error("Text timeouts require an integer expiry.");
+                const auto expires = row.value("expires", std::int64_t{});
+                if (expires < 0 || (timed_only && !expires)) throw std::runtime_error("Text timeouts must expire; invalid restriction expiry.");
+                if (std::none_of(entries.begin(), entries.end(), [&](const auto &entry) { return entry.id == id; }))
+                    entries.push_back({id, row.value("name", std::string{}), row.value("added", std::int64_t{}), expires});
+            }
+        } catch (const std::exception &e) {
+            throw std::runtime_error("Cannot read " + path_utf8(file) + ": " + e.what());
+        }
+    };
+    read_restrictions(c.file.parent_path() / "data" / "voice-mutes.json", c.voice_mutes, false);
+    read_restrictions(c.file.parent_path() / "data" / "text-timeouts.json", c.text_timeouts, true);
     // A config from an older version holds the bans itself: they are moved to their own file.
     const bool bans_moved = root.contains("bans");
     if (bans_moved) read_bans(root.at("bans"));
@@ -677,14 +860,34 @@ std::string roles_text(const Roles &roles) {
     root["players"] = std::move(players);
     return root.dump(2);
 }
-void save_config(const ServerConfig &c) {
+void save_config(const ServerConfig &c,bool include_restrictions) {
     // The bans first: a config that held them is only rewritten without them once they are safe.
-    write_file(bans_file(c), bans_json(c).dump(2));
+    write_file(bans_file(c), moderation_json(c.bans).dump(2));
+    if(include_restrictions){save_voice_mutes(c);save_text_timeouts(c);}
     // And the roles: a config that listed the admins is only rewritten without them once they are.
     write_file(roles_file(c), roles_text(c.roles));
     std::string text;
     write(text, layout(c), 0);
     write_file(c.file, text);
+}
+namespace {
+void save_restrictions(const std::filesystem::path &file, const std::vector<VoiceMute> &entries, bool timed_only) {
+    auto rows = Json::array();
+    for (const auto &entry : entries) {
+        if (timed_only && entry.expires <= 0) throw std::runtime_error("Text timeouts must have an expiry.");
+        auto row = Json::object();
+        row["id"] = std::to_string(entry.id); row["name"] = entry.name;
+        row["added"] = entry.added; row["expires"] = entry.expires;
+        rows.push_back(std::move(row));
+    }
+    write_file(file, rows.dump(2));
+}
+}
+void save_voice_mutes(const ServerConfig &c) {
+    save_restrictions(c.file.parent_path() / "data" / "voice-mutes.json", c.voice_mutes, false);
+}
+void save_text_timeouts(const ServerConfig &c) {
+    save_restrictions(c.file.parent_path() / "data" / "text-timeouts.json", c.text_timeouts, true);
 }
 std::string scoring_text(std::uint64_t fingerprint) {
     static constexpr char digits[] = "0123456789abcdef";
@@ -795,10 +998,13 @@ std::string custom_votes_error(const std::vector<CustomVote> &votes) {
     return {};
 }
 bool custom_command_name_free(std::string_view name) noexcept {
+    // MSC aliases are reserved even while their feature is disabled.
+    if(name=="msc" || name=="msc-ui")return false;
+    for(const auto &[alias,canonical]:msc_command_aliases)if(name==alias)return false;
     // The chat's own commands, then the server commands admins type as /<command>.
     for (const std::string_view taken :
-         {"help", "party", "p", "w", "whisper", "tell", "poll", "vote", "yes", "y", "no", "n", "tp",
-          "activity-log", "admin", "admins", "afk-kick", "kick-time", "role", "roles", "announce", "announce-throwdowns", "announce-to", "announcements",
+         {"joinmsg", "colourbundle", "shimmerbundle", "coinflip", "dice", "highlow", "build", "bal", "pay", "shimmers", "shop", "tags", "tag", "colour", "buy", "cleartag", "viptest", "stats", "daily", "top", "whoplaced", "nearobj", "delobj", "timeout", "untimeout", "timeouts", "mute", "unmute", "mutes", "vmute", "vunmute", "vmutes", "modhelp", "help", "party", "p", "w", "whisper", "tell", "poll", "vote", "yes", "y", "no", "n", "tp",
+          "activity-log", "admin", "admins", "afk-kick", "kick-time", "lock", "unlock", "locks", "throwdown-locks", "role", "roles", "announce", "announce-throwdowns", "announce-to", "announcements",
           "ban", "bans", "board-check", "bone-scale", "boosts", "boosts-allow", "chat-color", "chat-colour", "clear-objects", "crowd",
           "distances", "drones", "effects", "kick", "layer", "layer-sync", "layers", "listed", "map", "map-pool", "maps", "msg",
           "msg-admins", "msg-party", "name", "net", "nobail", "nobail-allow", "noclip", "noclip-allow", "object-limit",
@@ -865,6 +1071,19 @@ std::string park_mods_error(const ServerConfig &c) {
     return {};
 }
 std::string config_error(const ServerConfig &c) {
+    for(const auto value:{c.shop.joinmsg_price,c.shop.colourbundle_price,c.shop.shimmerbundle_price,c.shop.joinmsg_max_length,c.shop.joinmsg_cooldown_seconds})
+        if(!value || value>1000000)return "shop: expansion prices and limits must be 1 to 1000000.";
+    for(const auto value:{c.wagers.min_stake,c.wagers.coinflip_max_stake,c.wagers.dice_max_stake,c.wagers.highlow_max_stake,c.wagers.lobby_timeout_seconds,c.wagers.highlow_timeout_seconds})
+        if(!value || value>1000000)return "wagers: stakes and timeouts must be 1 to 1000000.";
+    if(c.shop.joinmsg_max_length>1000)return "shop: joinmsg_max_length must not exceed 1000.";
+    if(c.wagers.min_stake>c.wagers.coinflip_max_stake || c.wagers.min_stake>c.wagers.dice_max_stake || c.wagers.min_stake>c.wagers.highlow_max_stake)return "wagers: minimum stake exceeds a maximum.";
+    if(!c.shop.tag_price || !c.shop.colour_price || !c.shop.shimmer_price || c.shop.tag_price>1000000 || c.shop.colour_price>1000000 || c.shop.shimmer_price>1000000)return "shop: prices must be from 1 to 1000000.";
+    if (!c.player_stats.idle_seconds || !c.player_stats.daily_minutes || !c.player_stats.vip_hours || c.player_stats.vip_role.empty())
+        return "player_stats: idle_seconds, daily_minutes, vip_hours and vip_role must be nonzero/nonempty.";
+    if (!c.object_spam_alerts.count || c.object_spam_alerts.count > 10000 ||
+        !c.object_spam_alerts.window_seconds || c.object_spam_alerts.window_seconds > 300 ||
+        !c.object_spam_alerts.cooldown_seconds || c.object_spam_alerts.cooldown_seconds > 3600)
+        return "object_spam_alerts: count must be 1-10000, window_seconds 1-300, cooldown_seconds 1-3600.";
     using namespace multiplayer;
     if (!parse_colour(c.chat_color)) return "chat_color must be a colour like #8E5CFF.";
     if (c.afk_kick > 1440) return "afk_kick_minutes must be 0 (never) to 1440.";

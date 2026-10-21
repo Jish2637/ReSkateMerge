@@ -1032,6 +1032,19 @@ void networking(Session &s, const NativeFrame &local, std::uint64_t now) {
             }
             continue;
         }
+        if (p.kind == PacketKind::msc) {
+            if (s.msc_opted && dedicated_host(s) && message.peer == s.host_id && p.source == s.host_id &&
+                p.epoch == link->member.epoch && p.session == s.secret) {
+                try {
+                    const auto snap=msc::snapshot(msc::parse(p.text));
+                    if(msc::accepts(snap,s.epoch,s.msc_revision)) {
+                        s.msc_revision=snap.revision;
+                        std::lock_guard lock(s.mutex);s.msc_feed.payload=p.text;
+                    }
+                } catch (const std::exception&) { /* Malformed extensions never affect ordinary play. */ }
+            }
+            continue;
+        }
         // A dedicated server's answer to one of our admin requests, or a lobby host's to a
         // party request: a line for this player only.
         if (p.kind == PacketKind::admin) {

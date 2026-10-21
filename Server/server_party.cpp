@@ -209,6 +209,7 @@ void Host::party_command(Guest &guest, std::string_view line) {
 }
 
 void Host::party_chat(Guest &guest, std::string_view text) {
+    if (text_timed_out(guest.member.id)) return reply(guest, text_timeout_notice(guest.member.id));
     const auto party = parties_.party_of(guest.member.id);
     if (!party) return reply(guest, "You're not in a party.");
     const auto line = clean_chat_text(text);

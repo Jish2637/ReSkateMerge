@@ -153,6 +153,7 @@ enum class PacketKind : std::uint16_t {
     typing = 35,
     // Where a player's FPV drone is (drone_beacon.h), for the marker others see. Unreliable,
     // relayed like effects. Only sent when the player turns `dronetune beacon` on.
+    msc = 37, // Opt-in MSC interface v1; never sent to legacy clients.
     drone = 36
 };
 // A drone packet: a flag byte (1 = flying), the drone's position as three floats and which way

@@ -1,3 +1,4 @@
+#include "Engine/Game/Multiplayer/msc_interface.h"
 #pragma once
 #include "Engine/Game/Multiplayer/chat_rate.h"
 #include "session.h"
@@ -358,6 +359,9 @@ struct Session {
     std::uint64_t chat_sequence{};
     ChatRate local_chat_rate;
     MultiplayerChat chat_view;
+    msc::Feed msc_feed;
+    bool msc_opted{};
+    std::uint64_t msc_revision{};
     std::optional<std::uint64_t> chat_signature; // of everything chat_view shows (publish_chat)
     // Masked names and text of the lines in `chat`, by sequence, while the filter is on.
     std::map<std::uint64_t, std::pair<std::string, std::string>> chat_masked;

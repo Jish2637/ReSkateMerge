@@ -1,4 +1,6 @@
 #include "Server/server_text.h"
+#include "Server/announcement_pool.h"
+#include <set>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -17,6 +19,28 @@ void check(bool ok, const std::string &message) {
 } // namespace
 
 int main() {
+    for (unsigned seed = 0; seed < 100; ++seed) {
+        std::mt19937 random(seed);
+        dingosdk::server::AnnouncementPool pool;
+        const std::vector<std::string> messages{"A", "B", "C", "D"};
+        std::string last;
+        for (unsigned cycle = 0; cycle < 20; ++cycle) {
+            std::set<std::string> seen;
+            for (unsigned i = 0; i < messages.size(); ++i) {
+                const auto next = pool.next(messages, random);
+                check(next != last, "announcement repeated across a shuffle boundary");
+                check(seen.insert(next).second, "announcement repeated before pool exhaustion");
+                last = next;
+            }
+            check(seen == std::set<std::string>(messages.begin(), messages.end()), "shuffle lost an announcement");
+        }
+        check(pool.next({}, random).empty(), "empty announcement pool");
+        check(pool.next({"only"}, random) == "only" && pool.next({"only"}, random) == "only", "single announcement");
+        const auto first = pool.next({"new", "new", "other"}, random);
+        const auto second = pool.next({"new", "new", "other"}, random);
+        check(first != second && (first == "new" || first == "other") && (second == "new" || second == "other"), "duplicate entries repeated or stale pool after edit");
+        check(pool.next({"replacement"}, random) == "replacement", "same-sized list edit retained old messages");
+    }
     check(dm_line("Server", {}, "hi", 100) == "[DM from Server] hi", "plain DM");
     check(dm_line("Player", "party", "hi", 100) == "[DM from Player to party] hi", "party DM");
     check(dm_line("Player", "admins", "hi", 100) == "[DM from Player to admins] hi", "admins DM");

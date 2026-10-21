@@ -1,5 +1,9 @@
 #pragma once
 #include "server_activity.h"
+#include "public_chat_log.h"
+#include "points_audit.h"
+#include "announcement_pool.h"
+#include "object_audit.h"
 #include "worker_pool.h"
 #include "server_config.h"
 #include "board_check.h"
@@ -25,6 +29,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <ctime>
 
 namespace dingosdk::server {
 using namespace multiplayer;
@@ -36,7 +41,7 @@ using namespace multiplayer;
 class Host {
   public:
     using Log = std::function<void(const std::string &)>;
-    Host(ServerConfig &config, SteamTransport &transport, Log log);
+    Host(ServerConfig &config, SteamTransport &transport, Log log, std::shared_ptr<SerialTasks> stats_writer={});
     // Opens the listener and starts a session under the given server identity.
     bool start(std::string &error);
     void tick(std::uint64_t now);
@@ -82,6 +87,61 @@ class Host {
     enum class VoteKind { map, kick, time, custom, poll, extend };
 
   private:
+    struct Guest;
+    PlayerStatsStore stats_;
+    struct ShopQuote { std::string kind, value; unsigned price{}; std::uint64_t expires{}, epoch{}; };
+    std::map<std::uint64_t,ShopQuote> shop_quotes_;
+    std::uint64_t shop_check_at_{};
+    void shop_command(Guest &, std::string_view, std::string_view);
+    Json msc_snapshot(Guest &);
+    void msc_send(Guest &, std::uint64_t request=0, std::string message={});
+    void msc_request(Guest &, std::string_view);
+    void tick_msc();
+    Json msc_games(Guest &);
+    Json msc_staff(Guest &);
+    void msc_game_action(Guest &,const Json &);
+    std::string msc_staff_action(Guest &,const Json &);
+    std::string msc_staff_guard(Guest &,std::string_view,const std::vector<std::string>&);
+
+    std::uint64_t msc_quote_serial_{};
+
+    std::string clear_tag(std::string_view, std::uint64_t);
+    std::string tag_error(std::string_view) const;
+    std::string display_name(const Guest &) const;
+    bool shop_commit(Guest &, const PlayerStats &, std::string_view, unsigned listed_price=0, std::optional<std::uint64_t> actor={});
+    void audit_points(Json record);
+    PointsAuditLog points_audit_;
+    std::uint64_t points_audit_sequence_{};
+    bool points_audit_failed_{};
+    void tick_shop();
+    std::string joinmsg_error(std::string_view) const;
+    void joinmsg_broadcast(Guest &);
+    bool expansion_shop(Guest &,std::string_view,std::string_view);
+    void wager_command(Guest &,std::string_view,std::string_view);
+    std::vector<Wager> recovered_wagers_;
+    void tick_wagers(bool cancel_all=false,std::uint64_t leaving=0);
+    bool wager_commit(const std::map<std::uint64_t,PlayerStats> &,const std::vector<Wager> &,std::uint64_t,std::string_view);
+    bool wager_refund(std::size_t,std::string_view,std::uint64_t leaving=0);
+    bool stats_failed_{};
+    PublicChatLog public_chat_log_;
+    bool public_chat_log_failed_{};
+    std::uint64_t stats_saved_at_{}, leaderboard_at_{}, stats_public_at_{};
+    unsigned leaderboard_kind_{};
+    void tick_stats();
+    void save_stats(bool wait=false);
+    void account_stats();
+    void poll_stats_saves();
+    bool stats_save_due_{};
+    std::vector<std::pair<std::uint64_t,std::string>> stats_notices_,stats_notices_saving_;
+    void stats_joined(Guest &);
+    void stats_activity(Guest &);
+    void stats_command(Guest &, std::string_view verb, std::string_view rest);
+    bool unlimited_points(std::uint64_t id) const { const auto *role=role_of(id); return role && role->granted_all; }
+    std::string points_balance(std::uint64_t id, std::uint64_t wallet) const {
+        return unlimited_points(id) ? "Unlimited points" : std::to_string(wallet)+" points";
+    }
+    std::string vip_test_command(std::string_view player, std::uint64_t admin);
+    std::string stats_board(std::string_view kind, unsigned page, unsigned size);
     struct ChatBudget {
         std::uint64_t since{};
         unsigned messages{};
@@ -105,6 +165,21 @@ class Host {
         Counted traffic;
         std::uint64_t password_challenge{};
         bool handshaken{}, map_authorized{}, world_ready = true;
+        bool objects_observed{};
+        ObjectSpamWindow object_spam_window;
+        bool msc_fp{}, shop_login_done{}, shop_tag_hidden{};
+        bool msc_ui{}, msc_capture{}, msc_leader_active{};
+        std::string msc_message,msc_last_state,msc_quote_key,msc_quote_token,msc_leader_kind="weekly";
+        std::uint64_t msc_revision{},msc_highest{},msc_until{},msc_tick{},msc_collection_page=1,msc_leader_page=1;
+        ChatBudget msc_reads,msc_mutations;
+        std::map<std::uint64_t,std::pair<std::string,std::string>> msc_results;
+        std::string msc_panel="shop",msc_staff_output,msc_staff_token,msc_staff_command,msc_staff_label,msc_staff_description,msc_staff_action_id,msc_staff_guard_value;
+        std::uint64_t msc_staff_page=1,msc_staff_until{},msc_staff_world{},msc_staff_epoch{};
+        std::map<std::uint64_t,std::uint64_t> msc_staff_targets;
+        std::vector<std::string> msc_staff_args;
+
+
+        std::uint64_t msc_fp_until{},msc_presence_epoch{};
         std::uint64_t last_map_offer{}, travel_since{}, connected_at{}, last_packet{};
         std::uint64_t loading_since{}; // not ready in this world since (reloading on their own)
         // When they first said they are fetching the map (Packet::map_fetching), 0 for never
@@ -218,6 +293,7 @@ class Host {
         ObjectState objects, shared;
         std::uint64_t shared_from{};
         std::set<std::uint64_t> cleared;
+        std::uint32_t local_object_clears{};
         // Objects they placed in the last minute, and until when none of theirs are shared, for
         // placing more than a person does (sync_objects).
         std::uint64_t placed_since{}, placed{}, objects_held_until{};
@@ -263,8 +339,11 @@ class Host {
     std::uint64_t announcement_for_{}; // the one player shown it, or 0: everyone
     std::uint32_t announcement_ids_{};
     std::uint64_t announced_at_{}; // the last timed announcement, or while nobody is on
-    std::size_t next_announcement_{};
+    AnnouncementPool announcement_pool_;
+    std::uint64_t next_voice_mute_check_{};
+    std::uint64_t next_text_timeout_check_{};
     void active(Guest &guest) {
+        stats_activity(guest);
         guest.active_at = now_;
         guest.away_warned = false;
     }
@@ -382,7 +461,13 @@ class Host {
     // Roles (roles.h): a player's, whether it gives a command or a permission, whether it gives
     // any command at all, and its rank (-1 with no role: below every role).
     const Role *role_of(std::uint64_t id) const { return config_.roles.of(id); }
-    bool can(std::uint64_t id, std::string_view command) const { return allows(role_of(id), command); }
+    bool can(std::uint64_t id, std::string_view command) const {
+        if (command == "build") return allows(role_of(id), "kick");
+        if (command == "cleartag") return allows(role_of(id), "kick");
+        if (command == "timeout" || command == "untimeout" || command == "timeouts" || command == "mute" || command == "unmute" || command == "mutes" || command == "vmute" || command == "vunmute" || command == "vmutes" || command == "modhelp") return allows(role_of(id), "kick");
+        if (command == "whoplaced" || command == "nearobj" || command == "delobj") return allows(role_of(id), "kick");
+        return allows(role_of(id), command);
+    }
     bool has(std::uint64_t id, std::uint32_t permission) const {
         const auto *role = role_of(id);
         return role && (role->granted & permission);
@@ -431,7 +516,7 @@ class Host {
     void send_next_maps(Guest &);      // the maps the vote for the next one will offer
     void roles_changed();              // after any change to the roles or who has them
     bool is_banned(std::uint64_t id) const;
-    void save();
+    void save(bool include_restrictions=true);
 
     // `detail` is for the log alone: the player is told `reason`.
     bool send_packet(Guest &, const Packet &, bool reliable, bool fresh, std::span<const std::uint8_t> raw = {},
@@ -440,7 +525,7 @@ class Host {
     // `only`: to these players alone; `skip`: not to these.
     void broadcast(const Packet &, bool reliable, bool fresh, std::uint64_t except = 0,
                    const std::set<std::uint64_t> *only = nullptr, const std::set<std::uint64_t> *skip = nullptr);
-    void send_roster();
+    void send_roster(Guest *only_recipient=nullptr, std::optional<std::uint32_t> chat_colour={});
     void send_world_state();
     void send_chat(std::string_view text, Guest *only = nullptr);
     void send_bans(Guest &admin);
@@ -455,6 +540,28 @@ class Host {
     void receive_sound(std::uint64_t peer, std::span<const std::uint8_t> bytes, std::uint64_t received_at);
     void receive_cosmetics();
     void sync_objects();
+    ObjectAudit object_audit_;
+    struct ObjectPreview {
+        struct Entry { std::uint64_t owner{}, epoch{}, id{}; std::string item; };
+        std::uint64_t world{}, until{};
+        std::vector<Entry> entries;
+    };
+    std::map<std::uint64_t, ObjectPreview> object_previews_;
+    std::string object_moderation_command(std::string_view name, std::string_view argument, std::uint64_t caller);
+    void audit_objects(Guest &guest, const std::vector<NetworkObject> &layout); // record placements and privately alert staff; never kick
+    bool voice_muted(std::uint64_t id) const {
+        const auto wall = static_cast<std::int64_t>(std::time(nullptr));
+        return std::any_of(config_.voice_mutes.begin(), config_.voice_mutes.end(), [id, wall](const auto &entry) { return entry.id == id && entry.active(wall); });
+    }
+    bool text_timed_out(std::uint64_t id) const {
+        const auto wall = static_cast<std::int64_t>(std::time(nullptr));
+        return std::any_of(config_.text_timeouts.begin(), config_.text_timeouts.end(), [id, wall](const auto &entry) { return entry.id == id && entry.expires > wall; });
+    }
+    std::string text_timeout_notice(std::uint64_t id) const;
+    std::string voice_mute_notice(std::uint64_t id) const;
+    bool timeout_blocks_command(std::string_view line) const;
+    void tick_text_timeouts();
+    void tick_voice_mutes();
     void apply_layers();
     // Chat commands and votes (server_votes.cpp).
     void chat_command(Guest &, std::string_view line);
@@ -482,12 +589,14 @@ class Host {
     std::pair<std::string, bool> announcements_command(std::string_view argument);
     // The announcement card on every player's screen, or only on player `to`'s (not in chat).
     void announce(std::string_view text, std::uint64_t to = 0);
-    void tick_announcements(); // the owner's messages in turn, on their timer
+    void tick_announcements(); // shuffled without repeats, on their timer
     void reply(Guest &, std::string_view text, unsigned max_lines = 12);
     Guest *match_player(std::string_view text);
     // Sends each mover to a ring of `radius` around `at`, 1 m up, so nobody lands inside anyone; how many were sent.
     unsigned teleport_ring(const std::vector<Guest *> &movers, const std::array<float, 3> &at, float radius = 2.5f);
     void tick_rotation();
+    bool default_map_done_{};
+    void tick_default_map();
     std::string pool_text() const;     // the map pool, one map a line
     std::string rotation_text() const; // the rotation's interval and next map
     void resend_maps();                // after the pool or the admins change
@@ -514,6 +623,15 @@ class Host {
         bool warned{}; // told a minute before
     };
     std::vector<SpawnedPark> parks_spawned_;
+    struct SpawnedBuild { std::string name; std::vector<NetworkObject> objects; };
+    std::vector<SpawnedBuild> builds_loaded_;
+    struct BuildConfirmation {
+        std::string command,name,file_stamp;
+        std::uint64_t world{},epoch{},until{};
+        std::vector<NetworkObject> snapshot;
+    };
+    std::map<std::uint64_t,BuildConfirmation> build_confirmations_;
+    std::string build_command(std::string_view argument, std::uint64_t actor, bool confirmed=false);
     ObjectState park_objects_; // never reset: its revisions only grow, so no game holds a newer one
     std::uint64_t park_object_ids_{};
     bool by_vote_{}; // a passed custom vote's command is running (as the console)

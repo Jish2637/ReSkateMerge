@@ -76,6 +76,8 @@ void reset_peer(Session &s, std::size_t slot) {
     s.peers[slot] = {};
 }
 void stop(Session &s, std::string reason) {
+    s.msc_opted = false; s.msc_revision = 0;
+    { std::lock_guard lock(s.mutex); s.msc_feed = {}; }
     s.local_typing_until = 0;
     // A join that ends before the host's map was ready never got in.
     if (s.mode == Mode::join && s.awaiting_map && !s.travelling && s.join_started)
@@ -744,6 +746,9 @@ bool fetching_map() noexcept { return fetching_map_flag.load(std::memory_order_r
 std::uint64_t map_fetch_deadline() noexcept { return map_fetch_deadline_flag.load(); }
 void hold_map_load(bool hold, std::string_view package) noexcept {
     map_load_held.store(hold && !package.empty() ? map_hash(package) : 0);
+}
+msc::Feed msc_feed() {
+    auto& s=session(); std::lock_guard lock(s.mutex); return s.msc_feed;
 }
 MultiplayerChat chat() {
     auto &s = session();

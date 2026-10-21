@@ -130,3 +130,7 @@ during a match affect only a subsequent throwdown, both peers judge with the
 same thresholds, native category restrictions still apply, and Jam/Spot Battle
 remain unchanged. These checks and the earlier first-person/Sketchy Landings
 live acceptance checks remain pending; this release is not gameplay-verified.
+
+## Version 0.1.3 / server 2.1.2
+
+Release validation runs the full enabled suite against the integrated source, including first-person, controller, terminology, S.K.A.T.E., updater, MSC protocol/session, economy, games, staff and persistence tests. The real ImGui Activities harness covers both card scopes, action mappings, queue failure, stale reviews, sequential dice reveals and signed win/loss/refund presentation. Server host tests cover exactly-once announcement and unchanged shimmer ownership under the cyan alias. Packaging verifies server archive extraction, executable hash and preservation of fixture configuration/wallet files. Final counts and skipped installed-game-only checks are recorded in BUILD_INFO.json and the release notes. Latest in-game visual/controller and two-client checks are not represented as automated successes.

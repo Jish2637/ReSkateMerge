@@ -1,4 +1,8 @@
 #include "server_host.h"
+#include "msc_commands.h"
+#include "Extension/Throwdowns/throwdown_wire.h"
+#include "msc_presence.h"
+#include "shop.h"
 #include "server_text.h"
 #include "Extension/Multiplayer/Net/wire_codec.h"
 #include "Extension/Multiplayer/Net/block_codec.h"
@@ -47,15 +51,23 @@ std::uint64_t nonce() {
 }
 } // namespace
 
-Host::Host(ServerConfig &config, SteamTransport &transport, Log log)
-    : config_(config), transport_(transport), log_(std::move(log)),
+Host::Host(ServerConfig &config, SteamTransport &transport, Log log, std::shared_ptr<SerialTasks> stats_writer)
+    : stats_(std::move(stats_writer)), config_(config), transport_(transport), log_(std::move(log)),
       activity_([this](const std::string &text) { if (config_.activity_log) log_(text); },
                 [this](std::uint64_t id) {
                     const auto *guest = find(id);
                     return guest && guest->handshaken ? guest_name(*guest) : std::string{};
                 },
                 [this](const std::string &text) { if (config_.announce_throwdowns) send_chat(text); }) {
+    if (config_.player_stats.enabled || (!config_.file.empty() && std::filesystem::exists(config_.file.parent_path()/"data/player-stats.json"))) {
+        try { stats_.open(config_.file.empty() ? std::filesystem::path{} : config_.file.parent_path() / "data" / "player-stats.json");
+            if(std::ranges::any_of(stats_.wagers,[](const auto &w){return w.state=="pending";})){for(const auto &w:stats_.wagers)if(w.state=="pending")recovered_wagers_.push_back(w);
+                stats_.refund_pending();stats_.save();} }
+        catch (const std::exception &e) { stats_failed_=true; log_(std::string("[stats] Rewards disabled; existing data preserved: ")+e.what()); }
+    }
     parties_.set_limit(config_.party_size);
+    object_audit_.open(config_.file.empty() ? std::filesystem::path{} : config_.file.parent_path() / "data" / "object-history.jsonl",
+                       static_cast<std::int64_t>(std::time(nullptr)), log_);
 }
 
 Host::Guest *Host::find(std::uint64_t id) {
@@ -137,9 +149,9 @@ void Host::roles_changed() {
 bool Host::is_banned(std::uint64_t id) const {
     return std::any_of(config_.bans.begin(), config_.bans.end(), [&](const auto &ban) { return ban.id == id; });
 }
-void Host::save() {
+void Host::save(bool include_restrictions) {
     try {
-        save_config(config_);
+        save_config(config_,include_restrictions);
     } catch (const std::exception &e) {
         log_(std::string("Could not save the config: ") + e.what());
     }
@@ -168,8 +180,8 @@ std::vector<Host::PlayerInfo> Host::player_list() const {
             p.y = guest->latest_root->position[1];
             p.z = guest->latest_root->position[2];
         }
-        p.voice_muted = false;
-        p.text_muted = false;
+        p.voice_muted = voice_muted(id);
+        p.text_muted = text_timed_out(id);
         list.push_back(p);
     }
     return list;
@@ -271,17 +283,40 @@ bool Host::start(std::string &error) {
              std::to_string(cores) + " processors).");
     }
     running_ = true;
+    build_confirmations_.clear();
+    points_audit_failed_=!points_audit_.open(config_.file.parent_path()/"ReSkateServer-points.jsonl");
+    if(points_audit_failed_)log_("[warning] Cannot open ReSkateServer-points.jsonl; points audit records will still go to the main log.");
+    public_chat_log_failed_=!public_chat_log_.open(config_.file.parent_path()/"ReSkateServer-chat.log");
+    if(public_chat_log_failed_)log_("[warning] Cannot open ReSkateServer-chat.log; separate chat logging unavailable. Main log and chat continue normally.");
+    if(!stats_failed_)for(const auto &w:recovered_wagers_) {
+        auto record=Json::object();record["event"]="wager";record["action"]="restart refund";record["status"]="committed";
+        record["id"]=w.id;record["game"]=w.game;record["stake"]=w.stake;auto participants=Json::array();
+        for(auto id:w.members){auto p=Json::object();p["id"]=std::to_string(id);p["payout"]=w.stake;participants.push_back(std::move(p));}
+        record["participants"]=std::move(participants);audit_points(std::move(record));
+    }
+    recovered_wagers_.clear();
+    default_map_done_ = false;
+    tick_default_map();
     roster_dirty_ = true;
     return true;
 }
 void Host::stop(const std::string &reason) {
     if (!running_) return;
+    account_stats();
+    tick_stats();
+    tick_wagers(true);
+    save_stats(true);
+    stats_.world_changed();
     const auto away = packet(PacketKind::away, now_us());
+    remove_parks("server stop");
+    build_confirmations_.clear();
     for (auto &[id, guest] : guests_)
         if (guest->handshaken) send_packet(*guest, away, true, false);
     for (auto it = guests_.begin(); it != guests_.end();) transport_.disconnect((it++)->first, reason.c_str());
     guests_.clear();
     transport_.stop();
+    public_chat_log_.close();
+    points_audit_.close();
     running_ = false;
 }
 void Host::apply_layers() {
@@ -730,7 +765,7 @@ void Host::introduce() {
         send_required(g, next->cosmetic_packet);
     }
 }
-void Host::send_roster() {
+void Host::send_roster(Guest *only_recipient, std::optional<std::uint32_t> chat_colour) {
     // A tag the ReSkate team does not allow as a word is not worn (once per change of the roles).
     if (!role_tags_checked_) {
         role_tags_checked_ = true;
@@ -786,6 +821,10 @@ void Host::send_roster() {
             guest->member.speeding = guest->speeding;
             guest->member.scoring = guest->scoring_flagged;
             p.members.push_back(guest->member);
+            p.members.back().name=display_name(*guest);
+            if(config_.shop.enabled && config_.player_stats.enabled && !stats_failed_ && !p.members.back().tag.empty())
+                if(const auto it=stats_.players.find(id);it!=stats_.players.end() && !it->second.colour.empty())
+                    p.members.back().tag_color=shop_colour(it->second.colour).value_or(p.members.back().tag_color);
         }
     // Parties hold only handshaken players (party_request), so this only guards the roster's
     // rules: every listed party has two members and one leader.
@@ -801,17 +840,21 @@ void Host::send_roster() {
     // whose roster differs in the same way share one.
     struct Variant {
         bool noclip{}, no_bail{}, boosts{}, enforce_tuning{}, announcement{};
+        std::uint32_t object_clears{},chat_badge{},chat_text{};
         auto operator<=>(const Variant &) const = default;
     };
-    const Variant common{config_.noclip, config_.no_bail, config_.boosts, config_.enforce_tuning, !announcement_for_};
+    const Variant common{config_.noclip, config_.no_bail, config_.boosts, config_.enforce_tuning, !announcement_for_,
+                         object_clears_,p.chat_badge,p.chat_text};
     std::map<Variant, std::set<std::uint64_t>> variants;
     std::set<std::uint64_t> others;
     for (const auto &[id, guest] : guests_) {
-        if (!guest->handshaken) continue;
+        if (!guest->handshaken || (only_recipient && id!=only_recipient->member.id)) continue;
         auto variant = common;
         variant.announcement = !announcement_for_ || id == announcement_for_;
+        // Extend native 2.1.0 grouping; private previews and targeted clears must not lift tool locks.
+        variant.object_clears += guest->local_object_clears;
+        if(only_recipient && chat_colour){variant.chat_badge=*chat_colour;variant.chat_text=0xffffffffU;}
         if (const auto locks = locks_of(id)) {
-            // Without "movement" (send_permissions), the tools their role gives are said here instead.
             const bool movement = (locks & lock_movement) && has(id, multiplayer::role_movement);
             if (locks & lock_movement) {
                 variant.noclip = !(locks & lock_noclip) && (config_.noclip || movement);
@@ -820,21 +863,24 @@ void Host::send_roster() {
             }
             variant.enforce_tuning = config_.enforce_tuning || (locks & lock_tuning);
         }
-        if (variant == common) continue;
+        if (variant == common && !only_recipient) continue;
         variants[variant].insert(id);
         others.insert(id);
     }
     const auto shown = p.announcement;
     if (announcement_for_) p.announcement = {};
-    broadcast(p, true, false, 0, nullptr, others.empty() ? nullptr : &others);
+    if(!only_recipient)broadcast(p, true, false, 0, nullptr, others.empty() ? nullptr : &others);
     for (const auto &[variant, players] : variants) {
         p.guest_noclip = variant.noclip;
         p.guest_no_bail = variant.no_bail;
         p.guest_boosts = variant.boosts;
         p.enforce_tuning = variant.enforce_tuning;
         p.announcement = variant.announcement ? shown : multiplayer::ServerAnnouncement{};
+        p.object_clears=variant.object_clears;
+        p.chat_badge=variant.chat_badge;p.chat_text=variant.chat_text;
         broadcast(p, true, false, 0, &players);
     }
+    if(only_recipient)return;
     roster_dirty_ = false;
     last_roster_ = now_;
 }
@@ -910,11 +956,16 @@ void Host::send_maps(Guest &guest) { // admins: every map and the pool; players:
     if (send_packet(guest, list, true, false)) guest.maps_sent = true;
 }
 void Host::change_map(std::string_view map) {
+    object_previews_.clear();
+    build_confirmations_.clear();
     if (!valid_map_destination(map_destination(map_setting(map))))
         throw std::invalid_argument("That map does not name a destination.");
     if (!installed_map(map)) throw std::invalid_argument("This server does not have that map.");
+    // No MSC accounting, rewards or persistence here: use the native transfer path.
+    // Routine accounting runs before commands/tick work; world cleanup is memory-only.
     // Everything tied to the old world goes; admission and player slots stay. Park mods only fit
     // the map they were built on.
+    tick_wagers(true);
     remove_parks("map change");
     for (auto &[id, guest] : guests_) {
         auto &g = *guest;
@@ -923,6 +974,8 @@ void Host::change_map(std::string_view map) {
         g.traffic = old.traffic;
         g.member = std::move(old.member);
         g.handshaken = old.handshaken;
+        g.shop_login_done = old.shop_login_done;
+        g.shop_tag_hidden = old.shop_tag_hidden;
         g.map_authorized = old.map_authorized;
         g.password_challenge = old.password_challenge;
         g.connected_at = old.connected_at;
@@ -931,6 +984,7 @@ void Host::change_map(std::string_view map) {
         g.budget = old.budget;
         g.chat_rate = old.chat_rate;
         g.admin_budget = old.admin_budget;
+        g.local_object_clears = old.local_object_clears;
         g.throwdown_budget = old.throwdown_budget;
         g.party_budget = old.party_budget;
         g.scoring_budget = old.scoring_budget;
@@ -945,6 +999,8 @@ void Host::change_map(std::string_view map) {
         g.last_packet = now_;
     }
     if (++world_ == 0) throw std::runtime_error("Map transition counter exhausted.");
+    stats_.world_changed();
+    stats_save_due_=true; // schedule from the normal stats tick; never wait during transfer
     activity_.clear(); // throwdowns end with the world
     update_throwdown_locks();
     config_.map = map_setting(map);
@@ -963,7 +1019,17 @@ void Host::drop(std::uint64_t id, const std::string &reason, const std::string &
     transport_.disconnect(id, reason.c_str());
     const auto found = guests_.find(id);
     if (found == guests_.end()) return;
+    tick_stats();
+    tick_wagers(false,id);
+    stats_.left(id);
+    shop_quotes_.erase(id);
+    build_confirmations_.erase(id);
+    save_stats();
     const auto name = guest_name(*found->second);
+    object_previews_.erase(id);
+    std::erase_if(object_previews_, [&](const auto &entry) {
+        return std::any_of(entry.second.entries.begin(), entry.second.entries.end(), [&](const auto &e) { return e.owner == id; });
+    });
     // A throwdown's locks end with the visit; an admin's are kept for when they join again.
     in_throwdown_.erase(id);
     if (const auto locks = locks_.find(id); locks != locks_.end()) {
@@ -1171,10 +1237,12 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
         if (arrived && config_.activity_log)
             if (const auto since = link->travel_since ? link->travel_since : link->loading_since; since && now_ > since)
                 log_("[map] " + guest_name(*link) + " finished loading (" + std::to_string((now_ - since) / 1000000) + " s)");
+        if (!p.world_ready && link->world_ready) { account_stats(); stats_.pause(peer); }
         link->world_ready = p.world_ready;
         if (p.world_ready) link->travel_since = link->loading_since = 0;
         if (arrived) {
             meet_later(*link);
+            stats_joined(*link);
             active(*link); // the time away starts once they are in
         }
         return;
@@ -1238,6 +1306,15 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
             if (!proof_matches(proof, p.proof)) return drop(peer, "Incorrect server password.");
         }
         const bool joined = !link->handshaken;
+        if (joined) {stats_.left(peer);link->shop_login_done=false;shop_quotes_.erase(peer); }
+        if(joined || link->msc_presence_epoch!=p.epoch) {
+            link->msc_ui=false;link->msc_until=0;link->msc_revision=0;link->msc_highest=0;
+            link->msc_results.clear();link->msc_panel="shop";link->msc_staff_token.clear();link->msc_staff_output.clear();link->msc_staff_targets.clear();link->msc_quote_key.clear();link->msc_quote_token.clear();link->msc_last_state.clear();
+            build_confirmations_.erase(link->member.id);
+            link->object_spam_window = {};
+            link->objects_observed = false;
+            link->msc_fp=false;link->msc_fp_until=0;link->msc_presence_epoch=0;roster_dirty_=true;
+        }
         link->member.epoch = p.epoch;
         if (joined) {
             link->member.name = player_name(p.text, peer);
@@ -1246,14 +1323,20 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
             join_backoff_.joined(peer);
         }
         link->handshaken = true;
+        default_map_done_ = false;
         link->world_ready = true;
         link->travel_since = 0;
         link->last_packet = now_;
         send_required(*link, encode_wire(packet(PacketKind::welcome, now_)));
+        link->msc_presence_epoch=p.epoch;
         if (joined) {
             send_roster();
+            stats_joined(*link);
             meet_later(*link);
+            joinmsg_broadcast(*link);
             if (!config_.welcome.empty()) send_chat(config_.welcome, link);
+            if (voice_muted(peer)) send_chat(voice_mute_notice(peer), link);
+            if (text_timed_out(peer)) send_chat(text_timeout_notice(peer), link);
             // Locks kept from an earlier visit (their roster and permissions already have them).
             if (const auto locks = locks_of(peer)) {
                 send_chat("The server locked for you: " + lock_tools_text(locks) + ".", link);
@@ -1301,13 +1384,48 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
     if (p.kind == PacketKind::teleport) return drop(peer, "Only the server may teleport players.");
     // A listen host's; the server's physics are the game's own.
     if (p.kind == PacketKind::physics_tuning || p.kind == PacketKind::physics_extras) return;
+    if (p.kind == PacketKind::chat && p.text == "/msc-ui hello 1") {
+        if(link->handshaken && routed_source(p,link->member,peer,true,id_) && link->msc_reads.accept(now_,12)) {
+            link->msc_ui=true;link->msc_until=now_+30000000;msc_send(*link);
+        }
+        return;
+    }
+    if (p.kind == PacketKind::msc) {
+        if(link->handshaken && link->msc_ui && routed_source(p,link->member,peer,true,id_)) msc_request(*link,p.text);
+        return;
+    }
     if (p.kind == PacketKind::chat) {
-        active(*link);
+        link->active_at = now_;
+        link->away_warned = false;
         if (!routed_source(p, link->member, peer, true, id_) ||
             link->chat_rate.accept(now_, p.text, 1) != ChatRate::Verdict::accepted)
             return;
         link->last_packet = now_;
+        // Optional presence stays behind the existing authenticated/rate-limited
+        // chat path. Never reinterpret login, identity or transport messages.
+        if(p.text.starts_with("/jish-fp")) {
+            bool enabled{};
+            if(msc_presence::supported(config_.name) && msc_presence::parse_report(p.text,enabled)) {
+                if(link->msc_fp!=enabled)roster_dirty_=true;
+                link->msc_fp=enabled;link->msc_fp_until=enabled ? now_+15000000:0;
+            } else {
+                log_("[msc-fp] Ignored unsupported or malformed presence report from "+std::to_string(peer));
+            }
+            return;
+        }
+        if (text_timed_out(peer) && (p.text.front() != '/' || timeout_blocks_command(std::string_view(p.text).substr(1)))) {
+            send_chat(text_timeout_notice(peer), link);
+            return;
+        }
+        // Shop drafts use the pure filter, never the chat warning/kick path.
+        if(p.text.front()=='/') {
+            const auto [verb, rest]=split(std::string_view(p.text).substr(1));
+            const auto command=resolve_msc_command(verb);
+            if(command=="coinflip" || command=="dice" || command=="highlow") {wager_command(*link,command,rest);return;}
+            if(shop_verb(command)) { shop_command(*link,command,rest); return; }
+        }
         if (!allowed_words(*link, p.text)) return;
+        if (!text_timed_out(peer) && may(peer, multiplayer::role_chat)) stats_activity(*link);
         // "/" starts a command (votes; any server command for admins), answered to the sender only.
         if (p.text.front() == '/') {
             log_("[command] " + guest_name(*link) + ": /" + loggable(std::string_view(p.text).substr(1)));
@@ -1319,6 +1437,10 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
             return;
         }
         log_("[chat] " + guest_name(*link) + ": " + p.text);
+        if(!public_chat_log_failed_ && !public_chat_log_.append(peer,guest_name(*link),p.text)) {
+            public_chat_log_failed_=true;
+            log_("[warning] Cannot write ReSkateServer-chat.log; separate chat logging paused until restart. Main log and chat continue normally.");
+        }
         broadcast(p, true, false, p.source);
         return;
     }
@@ -1326,7 +1448,7 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
     // chat sends none. "On" is held to a few a second, and "off" is passed on only after an
     // "on", so neither can flood the relay.
     if (p.kind == PacketKind::typing) {
-        if (!routed_source(p, link->member, peer, true, id_) || !may(peer, multiplayer::role_chat)) return;
+        if (!routed_source(p, link->member, peer, true, id_) || !may(peer, multiplayer::role_chat) || text_timed_out(peer)) return;
         if (p.typing) {
             if (link->typing_notice && now_ < link->typing_notice + 200000) return;
             link->typing_notice = now_;
@@ -1336,7 +1458,7 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
             link->typing = false;
         }
         link->last_packet = now_;
-        active(*link);
+        link->active_at=now_;link->away_warned=false; // native AFK activity, not MSC reward activity
         broadcast(p, true, false, p.source);
         return;
     }
@@ -1349,6 +1471,13 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
         // attempts and drops go nowhere, whatever the other players' games would do with them.
         if (link->scoring_flagged) return;
         link->last_packet = now_;
+        if (config_.player_stats.enabled && !stats_failed_ && link->world_ready) {
+            if (const auto m = multiplayer::decode_throwdown(p.throwdown)) {
+                try { stats_.throwdown(peer, *m, now_, static_cast<std::int64_t>(std::time(nullptr)), config_.player_stats,
+                    [this](std::uint64_t id, const std::string &text) { if (auto *g=find(id)) reply(*g,text); }); }
+                catch (const std::exception &e) { stats_failed_=true; log_(std::string("[stats] Rewards paused until restart; event reward save failed: ")+e.what()); }
+            }
+        }
         if (config_.activity_log || config_.announce_throwdowns || config_.throwdown_locks) {
             activity_.throwdown(peer, p.throwdown, link->latest_root ? &link->latest_root->position : nullptr, now_);
             update_throwdown_locks();
@@ -1395,6 +1524,7 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
         return;
     }
     if (p.kind == PacketKind::voice) {
+        if (voice_muted(peer)) { link->last_packet = now_; return; }
         if (!voice_policy_.accepts(p.voice)) return;
         if (link->received_voice && !newer_sequence(p.sequence, link->voice_sequence)) return;
         if (!link->voice_budget.accept(now_, p.voice.bytes.size())) return;
@@ -1504,6 +1634,7 @@ void Host::sync_objects() {
             // No more of a player's objects than the server allows each of them; a role may lift that.
             const bool unlimited = has(id, multiplayer::role_objects);
             if (!unlimited) layout = limited_layout(std::move(layout), guest->shared.objects(), config_.object_limit);
+            audit_objects(*guest, layout);
             // Nobody places objects by the hundred, minute after minute: a game that does is
             // spawning and removing them to animate them. Theirs are deleted for everyone, and
             // nothing they place is shared for a minute (or they would be back at once).
@@ -1759,6 +1890,16 @@ std::string Host::loop_report() const {
 void Host::tick(std::uint64_t now) {
     if (!running_) return;
     now_ = now;
+    account_stats(); // memory only, before any native command/vote can switch the world
+    object_audit_.maintain(static_cast<std::int64_t>(std::time(nullptr)));
+    std::erase_if(object_previews_, [&](const auto &entry) { return now_ >= entry.second.until || entry.second.world != world_; });
+    std::erase_if(build_confirmations_,[&](const auto &entry){return now_>=entry.second.until || entry.second.world!=world_;});
+    for(auto& [id,guest]:guests_) {
+        (void)id;
+        if(guest->msc_fp && (now_>=guest->msc_fp_until || !msc_presence::supported(config_.name))) {
+            guest->msc_fp=false;guest->msc_fp_until=0;roster_dirty_=true;
+        }
+    }
     // Timed on a clock of its own, from the start of one pass to the start of the next.
     struct Timed {
         Host &host;
@@ -1959,7 +2100,14 @@ void Host::tick(std::uint64_t now) {
     }
     tick_rotation();
     tick_announcements();
+    tick_voice_mutes();
+    tick_text_timeouts();
+    tick_shop();
+    tick_wagers();
+    tick_stats();
+    tick_msc();
     remove_away();
+    tick_default_map();
     std::erase_if(vote_cooldowns_, [&](const auto &entry) { return now_ >= entry.second; });
     join_backoff_.prune(now_);
 }

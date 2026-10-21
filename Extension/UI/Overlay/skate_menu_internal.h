@@ -1,6 +1,7 @@
 #pragma once
 #include "skate_menu.h"
 #include <initializer_list>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -102,6 +103,12 @@ void debug_request(SkateMenu& menu, const CallbacksV3& callbacks, DebugRequest r
 inline constexpr int multiplayer_session_tab = 1, multiplayer_voice_tab = 2, multiplayer_bans_tab = 3, multiplayer_chat_tab = 4;
 void multiplayer_display_settings(SkateMenu&, const Model&);
 void special_page(SkateMenu&, const Model&, const CallbacksV3&);
+bool draw_msc_hub(SkateMenu&, const Model&);
+void close_msc_hub();
+using MscRequest = std::function<bool(Json,bool)>;
+void draw_msc_games(SkateMenu&,const Model&,const msc::Snapshot&,bool,double,const MscRequest&);
+void draw_msc_staff(SkateMenu&,const Model&,const msc::Snapshot&,bool,double,const MscRequest&);
+void reset_msc_features();
 void multiplayer_network_page(SkateMenu&, const Model&, const CallbacksV3&);
 void atmosphere_menu(SkateMenu&, const Model&, const CallbacksV3&);
 void progression_page(SkateMenu&, const Model&, const CallbacksV3&);
@@ -155,7 +162,7 @@ void set_menu_fullscreen(SkateMenu&, const CallbacksV3&, bool fullscreen);
 // The pages, for the shells and the home tiles (skate_menu.cpp).
 enum Page {
     page_home, page_map, page_build, page_skater, page_sandbox, page_addons, page_online, page_progress, page_mods,
-    page_settings, page_developer, page_count
+    page_settings, page_developer, page_msc, page_count
 };
 enum Addon { addon_all, addon_drone, addon_board_break, addon_road_rash, addon_hall_of_meat, addon_grind_exits, addon_music, addon_count };
 void open_page(SkateMenu&, int page, int addon = -1);

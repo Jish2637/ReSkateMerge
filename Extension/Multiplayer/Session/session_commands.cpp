@@ -640,9 +640,9 @@ bool queue_command(std::string_view action, std::string_view argument, std::stri
          action != "world-layer-sync" && action != "noclip-allow" && action != "nobail-allow" && action != "boosts-allow" &&
          action != "tuning-enforce" && action != "tp" &&
          action != "tpall" && action != "tphere" && action != "browse" &&
-         action != "server" && action != "party") ||
+         action != "server" && action != "party" && action != "msc" && action != "msc-hello") ||
         argument.size() > (action == "host" || action == "host-config" ? 160U : action == "chat" ? 4 * multiplayer_chat_max_bytes
-                           : action == "server" ? max_admin_text : 128U) ||
+                           : action == "server" ? max_admin_text : action == "msc" ? 4096U : 128U) ||
         password.size() > 64)
         return false;
     auto &s = session();
@@ -673,6 +673,19 @@ std::string command(std::string_view action, std::string_view argument, std::str
     input.password = password;
     auto &s = session();
     try {
+        if (action == "msc-hello") {
+            if (!dedicated_host(s) || std::to_string(s.epoch) != argument) return "MSC session changed.";
+            s.msc_opted = true;
+            auto p=packet(s,PacketKind::chat,now_us());p.text="/msc-ui hello 1";
+            return send_packet(s,s.host_id,p,true,false)?std::string{}:"MSC discovery could not reach the server.";
+        }
+        if (action == "msc") {
+            if (!dedicated_host(s) || !s.msc_opted) return "MSC is unavailable.";
+            const auto j=msc::parse(argument);
+            if(msc::identity(j,"epoch")!=s.epoch) return "MSC session changed.";
+            auto p=packet(s,PacketKind::msc,now_us());p.text=argument;
+            return send_packet(s,s.host_id,p,true,false) ? std::string{} : "MSC request could not reach the server.";
+        }
         // A dedicated server's admin changes the server's settings instead of
         // their own: the same menu actions, sent to the server. "server" sends
         // any server console command.

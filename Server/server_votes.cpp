@@ -1,5 +1,7 @@
 #include "server_host.h"
+#include "msc_commands.h"
 #include "server_text.h"
+#include "shop.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -95,6 +97,10 @@ std::vector<multiplayer::ServerCustomVote> Host::custom_votes() const {
 }
 bool Host::extend_vote_on() const { return config_.votes.extend.enabled && config_.map_rotation && config_.rotation_extend; }
 void Host::reply(Guest &guest, std::string_view text, unsigned max_lines) {
+    if (guest.msc_capture) {
+        if (guest.msc_message.size() < 900) { if (!guest.msc_message.empty()) guest.msc_message += "\n"; guest.msc_message += std::string(text.substr(0,900-guest.msc_message.size())); }
+        return;
+    }
     // Chat lines are single lines: longer answers (admin commands) arrive a line at a time.
     unsigned lines{};
     for (std::size_t at = 0; at <= text.size() && lines < max_lines;) {
@@ -118,7 +124,7 @@ Host::Guest *Host::match_player(std::string_view text) {
     }
     Guest *match{};
     for (auto &[id, guest] : guests_)
-        if (guest->handshaken && lower(guest_name(*guest)).starts_with(lower(text))) {
+        if (guest->handshaken && (lower(guest_name(*guest)).starts_with(lower(text)) || lower(display_name(*guest)).starts_with(lower(text)))) {
             if (match) return nullptr;
             match = guest.get();
         }
@@ -128,11 +134,19 @@ Host::Guest *Host::match_player(std::string_view text) {
 void Host::chat_command(Guest &guest, std::string_view line) {
     using multiplayer::ServerPolls;
     const auto [first, rest] = split(line);
-    const auto verb = lower(first);
+    const auto verb = resolve_msc_command(first);
+    if(verb=="coinflip" || verb=="dice" || verb=="highlow")return wager_command(guest,verb,rest);
+    if (shop_verb(verb)) return shop_command(guest,verb,rest);
+    if (verb == "bal" || verb == "pay" || verb == "stats" || verb == "daily" || verb == "top") return stats_command(guest, verb, rest);
     const auto custom = custom_votes();
     const auto polls = enabled_polls();
+    std::string msc_help;
+    if(config_.player_stats.enabled)msc_help="/bal (/b): MSC balance | /pay (/give) <player> <amount>\n/stats (/st) | /daily (/d) | /top (/lb) [points|time|events] [page]\n";
+    if(config_.shop.enabled && config_.player_stats.enabled)msc_help+="/shop (/s) | /tag (/t) <text|off> | /tags (/tl) | /shimmers (/sh)\n/colour (/c, /color) <name|default> | /buy (/confirm)\n/joinmsg (/jm) [set <text>|on|off] | /colourbundle (/cb) [buy] | /shimmerbundle (/sb) [buy]\n";
+    if(config_.wagers.enabled && config_.player_stats.enabled)msc_help+="/coinflip (/cf), /dice (/dd): create/c, join/j, leave/l, start/go, status/s, cancel/x\n/highlow (/hl) <amount> | higher/h | lower/l | cancel/x\n";
+    if(verb=="msc")return reply(guest,msc_help.empty()?"MSC features are disabled on this server.":msc_help);
     if (verb.empty() || verb == "help" || verb == "?") {
-        std::string text;
+        std::string text=msc_help;
         const auto votes = enabled_votes();
         if (votes & server_vote_map) text += "/vote map <map>: start a vote to change the map\n";
         if (votes & server_vote_kick) text += "/vote kick <player>: start a vote to kick a player\n";
@@ -152,8 +166,23 @@ void Host::chat_command(Guest &guest, std::string_view line) {
             text += role->all_commands
                 ? "Admins: any server command as /<command>, e.g. /kick, /map, /tpall, /votes, /announce, /announce-to, /msg, /msg-party, /msg-admins, /lock, /unlock, /locks\n"
                 : "Your role (" + role->name + "): these server commands as /<command>: " + joined(role->commands, ", ") + "\n";
+        if (can(guest.member.id, "whoplaced")) text += "/whoplaced [minutes] [page] | /nearobj [partial name] | /nearobj page <n> | /delobj <player name>\n";
+        if (can(guest.member.id, "build")) text += "/build save <name> [replace] | /build list | /build load <name> | /build unload <name> | /build remove <name>: shared build saves; /build confirm or /build cancel for protected actions\n";
+        if (can(guest.member.id, "modhelp")) text += "/modhelp [page]: private moderator command guide, including object tools and voice mutes\n";
         const std::string whisper = "/w <player> <message>: send a private message";
-        return reply(guest, (text.empty() ? "This server has no player votes. Type /tp <player> to teleport.\n" : text) + whisper);
+        text=(text.empty()?"This server has no player votes. Type /tp <player> to teleport.\n":text)+whisper;
+        std::vector<std::string_view> lines;
+        for(auto remaining=std::string_view(text);!remaining.empty();) {
+            const auto end=remaining.find('\n');lines.push_back(remaining.substr(0,end));
+            if(end==std::string_view::npos)break;remaining.remove_prefix(end+1);
+        }
+        const auto pages=(lines.size()+9)/10;
+        const auto page=rest.empty()?std::optional<std::uint64_t>{1}:number(trim(rest));
+        if(!page || !*page || *page>pages)return reply(guest,"Usage: /help [page 1-"+std::to_string(pages)+"]");
+        std::string output="Server help | page "+std::to_string(*page)+"/"+std::to_string(pages);
+        for(auto i=(*page-1)*10;i<std::min<std::size_t>(*page*10,lines.size());++i)output+="\n"+std::string(lines[i]);
+        if(*page<pages)output+="\nNext: /help "+std::to_string(*page+1);
+        return reply(guest,output);
     }
     if ((verb == "party" || verb == "p") && !may(guest.member.id, multiplayer::role_parties))
         return reply(guest, role_refusal(guest.member.id, "use parties"));
@@ -689,9 +718,10 @@ void Host::tick_announcements() { // the timer waits while nobody is on
         return;
     }
     if (now_ - announced_at_ < std::uint64_t{a.interval} * 60000000) return;
+    if (now_ < stats_public_at_ + 30000000 || (announcement_.id && now_ < announcement_until_)) return;
     announced_at_ = now_;
-    next_announcement_ %= a.messages.size();
-    announce(a.messages[next_announcement_++]);
+    stats_public_at_ = now_;
+    announce(announcement_pool_.next(a.messages, random_));
 }
 std::pair<std::string, bool> Host::announcements_command(std::string_view argument) {
     auto &a = config_.announcements;
@@ -864,7 +894,19 @@ void Host::finish_next_map_vote(const Vote &done, const std::vector<unsigned> &c
     send_chat(line);
     log_("[rotation] " + line);
     change_map(next->name);
-    save();
+    save(false);
+}
+void Host::tick_default_map() {
+    if (players()) { default_map_done_=false; return; }
+    // Pending admission/map downloads still hold a connection: never switch underneath them.
+    if (!guests_.empty() || default_map_done_ || config_.default_map.empty()) return;
+    default_map_done_=true;
+    try {
+        // The console's native map command validates installed maps and saves the selection.
+        log_("[default-map] "+command("map "+config_.default_map));
+    } catch (const std::exception &e) {
+        log_(std::string("[default-map] Could not select default map: ")+e.what());
+    }
 }
 void Host::tick_rotation() { // waits while nobody is on, and for a running vote
     if (!config_.map_rotation || !players()) {
@@ -909,6 +951,6 @@ void Host::tick_rotation() { // waits while nobody is on, and for a running vote
     send_chat("Changing the map to " + next->name + ".");
     log_("[rotation] Changing the map to " + next->name + ".");
     change_map(next->name);
-    save();
+    save(false);
 }
 } // namespace dingosdk::server
