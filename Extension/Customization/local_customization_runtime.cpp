@@ -67,6 +67,7 @@ bool cosmetic_words(std::uintptr_t p, std::size_t limit, std::vector<std::uint32
 }
 
 namespace {
+constexpr std::string_view ownership_override_option = "ReSkate.OwnershipOverride";
 std::mutex reserved_hash_mutex;
 std::set<std::uint32_t> reserved_hashes;
 }
@@ -81,8 +82,36 @@ bool reserved_cosmetic_hash(std::uint32_t hash) {
     std::lock_guard lock(reserved_hash_mutex);
     return hash && reserved_hashes.contains(hash);
 }
+bool ownership_override_enabled() {
+    auto& s = local_runtime();
+    std::lock_guard lock(s.native_mutex);
+    return s.store && s.store->bool_option(ownership_override_option).value_or(false);
+}
+bool ownership_override_restart_required() {
+    auto& s = local_runtime();
+    std::lock_guard lock(s.native_mutex);
+    return cosmetic_runtime().ownership_override.restart_required(ownership_override_enabled());
+}
+void set_ownership_override(bool enabled) {
+    auto& s = local_runtime();
+    std::lock_guard lock(s.native_mutex);
+    if (!s.active || !s.store) throw std::runtime_error("Local profile is unavailable; setting was not saved.");
+    // Save first. Only expansion is safe live; a saved disable keeps the
+    // existing native inventory intact until the next game process.
+    auto& c = cosmetic_runtime();
+    c.ownership_override.effective(ownership_override_enabled());
+    s.store->set_bool_option(ownership_override_option, enabled);
+    if (enabled && c.ownership_override.enable_live()) {
+        ++c.items_generation;
+        c.published_inventory = c.inventory_data_model = 0;
+        c.published_inventory_count = 0;
+    }
+}
 bool installed_item_owned(const profile::Snapshot& snapshot, std::string_view key, std::uint32_t hash, bool build_kit) {
-    if (cosmetic_runtime().ownership_unavailable || reserved_cosmetic_hash(hash)) return false;
+    const auto override = snapshot.bool_options.find(ownership_override_option);
+    const bool enabled = cosmetic_runtime().ownership_override.effective(
+        override != snapshot.bool_options.end() && override->second);
+    if (cosmetic_runtime().ownership_unavailable || reserved_cosmetic_hash(hash)) return enabled;
     const auto option = snapshot.bool_options.find(build_kit ? profile::unlock_objects_option : profile::unlock_cosmetics_option);
     if (option != snapshot.bool_options.end() && option->second) return true;
     const dingosdk::Json* section = &snapshot.customization;

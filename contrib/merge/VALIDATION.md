@@ -154,3 +154,7 @@ The new fix requires a live MSC/MSC game to confirm the log-reproduced issue is 
 ## Version 0.1.7 / server 2.1.4 Slots
 
 Local paired test build: 113 passed, zero failed, one skipped (trainer_tuning_names requires installed game data). User reported successful gameplay and authorized release. Added automated coverage includes all 125 Slots results surviving persistence, idempotent restart handling, old Hub opt-in boundaries, reconnect reset, filesystem save-failure rollback and fresh-Host recovery. Simulated host coverage does not establish actual older-client binary interoperability. S.K.A.T.E. source is unchanged. Release rebuild results are recorded in packaged BUILD_INFO.json.
+
+## Version 0.1.8
+
+Patch for object dropper.

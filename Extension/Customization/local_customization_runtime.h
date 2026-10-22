@@ -1,5 +1,6 @@
 #pragma once
 #include "Extension/Profile/runtime_internal.h"
+#include "ownership_override_state.h"
 
 namespace dingosdk::profile_runtime {
 struct CosmeticItemInfo {
@@ -40,6 +41,7 @@ struct CosmeticRuntime {
     std::uint32_t published_inventory_count{};
     bool catalog_failed{};
     bool ownership_unavailable{};
+    OwnershipOverrideState ownership_override;
     std::int32_t observed_selection{-1};
 };
 
@@ -58,8 +60,13 @@ bool cosmetic_words(std::uintptr_t p, std::size_t limit, std::vector<std::uint32
 bool refresh_cosmetic_catalog();
 bool reserved_cosmetic(std::string_view asset);
 bool reserved_cosmetic_hash(std::uint32_t hash);
+// Console-only override, persisted in the local player profile; absent means off.
+bool ownership_override_enabled();
+bool ownership_override_restart_required();
+void set_ownership_override(bool enabled);
+
 // Whether the player owns an installed cosmetic or Build object (`build_kit`). A paid store copy
-// never; with the kind's unlock option on (the default) every other one, with nothing per item
+// never by default (the console-only ownership override can opt in); with the kind's unlock option on (the default) every other one, with nothing per item
 // saved; off, what the profile saved. Nothing while the content cache that names the paid copies
 // is unavailable.
 bool installed_item_owned(const profile::Snapshot& snapshot, std::string_view key, std::uint32_t hash, bool build_kit);

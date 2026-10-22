@@ -1,5 +1,6 @@
 #include "Extension/Console/commands.h"
 #include "Extension/Customization/item_browser.h"
+#include "Extension/Customization/local_customization_runtime.h"
 
 namespace dingosdk::console {
 void register_item_commands(Commands &registry) {
@@ -16,7 +17,17 @@ void register_item_commands(Commands &registry) {
         const auto space = text.find(' ');
         const auto verb = text.substr(0, space);
         const auto rest = space == std::string::npos ? std::string{} : text.substr(space + 1);
-        if (verb == "fav") {
+        if (verb == "ownership_override") {
+            // Intentionally omitted from public help, menus and completions.
+            if (rest == "on" || rest == "1") profile_runtime::set_ownership_override(true);
+            else if (rest == "off" || rest == "0") profile_runtime::set_ownership_override(false);
+            else if (!rest.empty() && rest != "status") {
+                out("Usage: items ownership_override on|off|status");
+                return;
+            }
+            out(std::string("Ownership override: ") + (profile_runtime::ownership_override_enabled() ? "on" : "off") +
+                (profile_runtime::ownership_override_restart_required() ? ". Saved. Restart the game to apply; current-session ownership is unchanged." : ". Saved to your local profile; active for this session."));
+        } else if (verb == "fav") {
             item_browser::toggle_focused_favorite();
             out("Favorite toggled for the highlighted item.");
         } else if (verb == "search") {

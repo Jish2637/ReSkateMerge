@@ -1,3 +1,7 @@
+# ReSkateMerge MSC v0.1.8
+
+Patch for object dropper.
+
 # ReSkateMerge MSC v0.1.7 / MSC server 2.1.4 - Hub Slots
 
 Adds Slots to MSC Hub Activities, with server-generated reels, persisted stakes and payouts, a 3.5-second cooldown and recent winning spins. No public chat spin messages or chat-based Slots command. Global wagering and server permissions still apply. Optional wagers.slots_enabled defaults true; wagers.slots_max_stake defaults 500. Global wagering remains disabled wherever the existing configuration disables it.

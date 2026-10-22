@@ -2,6 +2,7 @@
 // profile::Store::changes() advances, so every save that changes the profile must advance it.
 // Runs on a scratch save it makes in the temporary folder.
 #include "Extension/Profile/local_profile.h"
+#include "Extension/Customization/ownership_override_state.h"
 #include <iostream>
 
 namespace {
@@ -13,12 +14,28 @@ void check(bool condition, const char* message) {
 
 int main() {
     using namespace dingosdk;
+    {
+        profile_runtime::OwnershipOverrideState session;
+        check(!session.effective(false), "ownership starts off by default");
+        check(session.enable_live() && session.effective(true) && !session.restart_required(true), "enabling applies live without restart");
+        check(!session.enable_live(), "repeated enable does not rebuild inventory");
+        check(session.restart_required(false) && session.effective(false), "disable preserves live ownership until restart");
+        check(!session.enable_live() && !session.restart_required(true), "re-enable cancels pending disable without rebuild");
+        profile_runtime::OwnershipOverrideState restarted;
+        check(restarted.effective(true), "restart applies saved enable");
+        check(restarted.restart_required(false) && restarted.effective(false), "disabling never shrinks live inventory");
+        check(!restarted.restart_required(true) && restarted.effective(true), "off/on restores current policy without inventory rebuild");
+        profile_runtime::OwnershipOverrideState disabled;
+        check(!disabled.effective(false), "next restart applies saved disable");
+    }
     const auto folder = std::filesystem::temp_directory_path() / "reskate-profile-change-tests";
     const auto save = folder / "reskate.sqlite3";
     std::error_code error;
     std::filesystem::remove_all(folder, error);
     {
         profile::Store store(save);
+        check(!store.bool_option("ReSkate.OwnershipOverride").value_or(false), "ownership override defaults off");
+        store.set_bool_option("ReSkate.OwnershipOverride", true);
         auto seen = profile::Store::changes();
         const auto announced = [&] {
             const auto now = profile::Store::changes();
@@ -65,6 +82,8 @@ int main() {
     {
         // A restart: the saved values and their types (a whole number saved as a float stays one).
         profile::Store store(save);
+        check(store.bool_option("ReSkate.OwnershipOverride").value_or(false), "ownership override stays enabled after restart");
+        store.set_bool_option("ReSkate.OwnershipOverride", false);
         const auto number = store.user_value("grindAssist");
         check(store.native_profile_option(2, "UseHighCam") == Json(false) &&
             store.user_value("enableCompass") == Json(false) && store.user_value("cameraMode") == Json(2) &&
@@ -73,6 +92,10 @@ int main() {
             store.selected_cosmetic_preset() == 3, "saved settings come back after a restart");
         check(profile::park_choices(store.snapshot()) == ParkChoices{"megapark_04", "flumppark_10", "streetpark_06"} &&
               store.user_value("ReSkate.RandomizeParksOnLaunch") == Json(true), "parks and launch preference survive a restart");
+    }
+    {
+        profile::Store store(save);
+        check(!store.bool_option("ReSkate.OwnershipOverride").value_or(true), "disabled ownership override survives restart");
     }
     std::filesystem::remove_all(folder, error);
     if (failures) return 1;
