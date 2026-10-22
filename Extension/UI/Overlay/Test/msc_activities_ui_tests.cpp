@@ -54,6 +54,17 @@ int main(){try{
 
     }
 
+    for(bool style:{false,true}) {
+        menu::reset_msc_features();sent.clear();full_screen=style;
+        msc::GameView view;view.id="slots";view.label="Slots";view.enabled=true;view.minimum=10;view.maximum=100;view.capacity=1;view.actions={"spin"};
+        data.games={view};frame();activate="SPIN REELS";frame();
+        require(sent.size()==1 && sent[0].at("op").string()=="game" && sent[0].at("game").string()=="slots" && sent[0].at("action").string()=="spin" && sent[0].at("round").get<unsigned>()==0 && sent[0].at("stake").get<unsigned>()==10,"Slot spin did not send a single scoped MSC action");
+        msc::GameRound round;round.id=800;round.creator=data.player;round.stake=10;round.pot=10;round.state="settled";round.members={{data.player,50,"Player"}};round.my_payout=50;round.reels={1,1,1};round.has_reels=true;round.multiplier=5;
+        data.games.front().previous=round;frame();
+        require(last_text.find("Reels spinning")!=std::string::npos && last_text.find("YOU WON!")==std::string::npos,"Slots disclosed the result before reveal");
+        io.DeltaTime=4;frame();io.DeltaTime=1.f/60;
+        require(last_text.find("YOU WON!")!=std::string::npos && last_text.find("+40 MSC")!=std::string::npos,"Slot reveal omitted the server payout");
+    }
     for(bool style:{false,true})for(const char* action:{"start","leave","cancel","higher","lower"}) {
         menu::reset_msc_features();sent.clear();full_screen=style;
         msc::GameView view;const bool high=std::string_view(action)=="higher" || std::string_view(action)=="lower";

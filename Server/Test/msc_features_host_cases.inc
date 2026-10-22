@@ -18,14 +18,20 @@ int run_msc_features_host() {
 
     p.say("/msc-ui hello 1",now);q.say("/msc-ui hello 1",now);run_for(1100000);
     std::map<std::uint64_t,std::uint64_t> serial;
-    auto send=[&](Game& g,Json body){body["v"]=1U;body["epoch"]=std::to_string(g.epoch);body["request"]=++serial[g.id];auto out=g.header(PacketKind::msc,now);out.text=body.dump();g.send(out);run_for(1100000);return out.text;};
+    auto send=[&](Game& g,Json body,bool slots=true){if(slots)body["slots_ui"]=true;body["v"]=1U;body["epoch"]=std::to_string(g.epoch);body["request"]=++serial[g.id];auto out=g.header(PacketKind::msc,now);out.text=body.dump();g.send(out);run_for(1100000);return out.text;};
     auto retry=[&](Game& g,const std::string& text){auto out=g.header(PacketKind::msc,now);out.text=text;g.send(out);run_for(1100000);};
     auto read=[&](Game& g,const char* op){auto j=Json::object();j["op"]=op;send(g,j);};
     auto state=[&](Game& g){check(!g.msc_messages.empty(),"MSC feature reply missing");return msc::snapshot(g.msc_messages.back());};
     auto response=[&](Game& g){for(auto it=g.msc_messages.rbegin();it!=g.msc_messages.rend();++it)if(msc::integer(*it,"request")==serial[g.id])return msc::snapshot(*it);throw std::runtime_error("Missing request acknowledgement");};
     auto view=[&](Game& g,const std::string& name){const auto snap=state(g);for(const auto& v:snap.games)if(v.id==name)return v;throw std::runtime_error("Missing MSC game");};
     auto act=[&](Game& g,const std::string& game,const std::string& action,std::uint64_t round=0){auto j=Json::object();j["op"]="game";j["game"]=game;j["action"]=action;j["round"]=round;j["stake"]=10U;return send(g,j);};
-    read(p,"games");check(state(p).games_supported && state(p).games.size()==3,"Existing game catalogue missing");
+    // Old Hub clients omit the opt-in flag, even if they forge a Slots action.
+    Json legacy=Json::object();legacy["op"]="games";
+    send(p,legacy,false);check(state(p).games_supported && state(p).games.size()==3,"Legacy Hub catalogue changed");
+    const auto legacy_balance=saved().wallet;
+    legacy["op"]="game";legacy["game"]="slots";legacy["action"]="spin";legacy["stake"]=10U;legacy["round"]=0U;
+    send(p,legacy,false);check(saved().wallet==legacy_balance && state(p).games.size()==3,"Non-opted-in client could spin Slots");
+    read(p,"games");check(state(p).games_supported && state(p).games.size()==4,"Extended game catalogue missing");
     const auto base=saved().wallet,total=base+saved(other).wallet;
     const auto create=act(p,"coinflip","create");
     const auto announcements=std::ranges::count_if(q.chat,[](const auto& line){return line.find("opened a Coin Flip lobby")!=std::string::npos;});check(announcements==1,"UI lobby creation did not announce once to other players");const auto round=view(p,"coinflip").round;
@@ -50,8 +56,29 @@ int run_msc_features_host() {
     act(p,"highlow","create");const auto high=view(p,"highlow").round;check(high && high->initial>=1 && high->initial<=13,"High / Low initial card missing");
     read(q,"games");check(!view(q,"highlow").round,"Private High / Low round leaked");
     if(high){act(p,"highlow",high->initial<13?"higher":"lower",high->id);const auto result=view(p,"highlow").previous;check(result && result->second>=1 && result->second<=13 && !result->direction.empty(),"High / Low outcome metadata missing");}
+    // Slots are playable only through the structured MSC interface. Every spin
+    // is settled and saved before the response; its reels belong only to the caller.
+    const auto chat_before=p.chat.size(),other_chat_before=q.chat.size();
+    const auto pre_spin=saved().wallet;
+    const auto spin_request=act(p,"slots","spin");
+    const auto spun=view(p,"slots").previous;
+    check(spun && spun->has_reels && spun->state=="settled" && spun->members.size()==1,"Slot spin was not durably settled with three reels");
+    if(spun) {
+        const auto reward=spun->my_payout;
+        check(spun->multiplier==reward/10 && (reward==0 || reward==10 || reward==30 || reward==50 || reward==80 || reward==150 || reward==250),"Invalid slot payout");
+        check(saved().wallet==pre_spin-10+reward,"Slot stake and payout did not balance");
+        check(!view(p,"slots").round,"Slot spin unexpectedly opened a lobby");
+        const auto post_spin=saved().wallet;
+        retry(p,spin_request);check(saved().wallet==post_spin,"Duplicate slot request paid twice");
+        act(p,"slots","spin");check(saved().wallet==post_spin,"Slot spin cooldown was bypassed");
+        read(q,"games");check(!view(q,"slots").previous,"Slot reels leaked into another player's result");
+        // Wins, when present, are advertised in the Hub only.
+        if(reward>10)check(!view(q,"slots").wins.empty(),"Winning slots result missing from Hub announcements");
+        check(p.chat.size()==chat_before && q.chat.size()==other_chat_before,"Slot spin sent chat output");
+        run_for(4200000);act(p,"slots","spin");check(view(p,"slots").previous->id!=spun->id,"Subsequent slot spin failed after cooldown");
+    }
     config.wagers.enabled=false;read(p,"games");check(!view(p,"dice").enabled && view(p,"dice").actions.empty(),"Disabled game exposed actions");
-    const auto disabled_balance=saved().wallet;act(p,"dice","create");check(saved().wallet==disabled_balance,"Disabled game charged stake");config.wagers.enabled=true;
+    const auto disabled_balance=saved().wallet;act(p,"dice","create");act(p,"slots","spin");check(saved().wallet==disabled_balance,"Disabled game charged stake");config.wagers.enabled=true;
     read(p,"staff");check(!state(p).staff && !state(p).staff_available,"Ordinary client received staff data");
     read(q,"staff");check(state(q).staff && state(q).staff_available,"Admin staff screen unavailable");
     if(!state(q).staff)return 1;
@@ -80,5 +107,41 @@ int run_msc_features_host() {
     staff(q,"staff-preview","kick",Json::array({std::to_string(player),""}));token=state(q).staff->quote->token;
     host.drop(player,"Feature reconnect test");run_for(100000);p.epoch+=1000;p.joined=false;p.receiver={};wire().closed.erase(player);p.hello(now);run_for(2000000);
     confirm(q,token);check(response(q).message.find("reconnected or left")!=std::string::npos,"Staff confirmation crossed target session");
-    host.stop("MSC feature tests complete");std::filesystem::remove_all(folder);return failures;
+    // Inject an actual filesystem write failure at the transaction boundary.
+    p.say("/msc-ui hello 1",now);run_for(1100000);
+    Json reconnect=Json::object();reconnect["op"]="games";send(p,reconnect,false);
+    check(state(p).games.size()==3,"Slots opt-in leaked across reconnect");
+    read(p,"games");run_for(4200000);
+    const auto stats_path=folder/"data/player-stats.json";
+    PlayerStatsStore durable;durable.open(stats_path);
+    const auto before_failure=durable.players.at(player).wallet;
+    const auto ledger_size=durable.wagers.size(),next_id=durable.next_wager_id;
+    writer->submit([]{}).get();
+    std::filesystem::create_directory(stats_path.string()+".tmp");
+    const auto failed_spin=act(p,"slots","spin");
+    check(response(p).message.find("could not be saved")!=std::string::npos,"Slot save failure was not reported");
+    check(state(p).paused && state(p).profile.balance==before_failure,"Slot save failure did not roll back and pause economy");
+    std::filesystem::remove(stats_path.string()+".tmp");
+    retry(p,failed_spin);act(p,"slots","spin");
+    PlayerStatsStore unchanged;unchanged.open(stats_path);
+    check(unchanged.players.at(player).wallet==before_failure && unchanged.wagers.size()==ledger_size && unchanged.next_wager_id==next_id,"Failed/retried slot save changed durable balance or ledger");
+    host.stop("MSC feature tests complete");
+    // A new Host must load the settled ledger and recover after a storage failure.
+    wire()={};SteamTransport restarted_transport;
+    Host restarted(config,restarted_transport,[](const auto&){},writer);
+    check(restarted.start(error),"Slots restart failed: "+error);
+    const auto restarted_invite=parse_invite(restarted.invite());if(!restarted_invite)return 1;
+    Game fresh;fresh.id=player;fresh.epoch=p.epoch+1000;fresh.secret=restarted_invite->secret;fresh.map=map_hash(map_destination(config.map));fresh.name="Buyer";
+    auto restart_run=[&](std::uint64_t us){for(const auto end=now+us;now<end;now+=50000){if(fresh.joined)fresh.ready(now);restarted.tick(now);writer->submit([]{}).get();fresh.read();}};
+    fresh.hello(now);restart_run(2000000);fresh.say("/msc-ui hello 1",now);restart_run(1100000);
+    Json request=Json::object();request["v"]=1U;request["epoch"]=std::to_string(fresh.epoch);request["request"]=1U;request["slots_ui"]=true;request["op"]="games";
+    auto packet=fresh.header(PacketKind::msc,now);packet.text=request.dump();fresh.send(packet);restart_run(1100000);
+    const auto recovered=state(fresh);
+    check(!recovered.paused && recovered.profile.balance==before_failure,"Host restart lost settled balance or remained paused");
+    const auto result=view(fresh,"slots").previous;
+    check(result && result->has_reels,"Host restart lost private Slots result");
+    request["request"]=2U;request["op"]="game";request["game"]="slots";request["action"]="spin";request["stake"]=10U;request["round"]=0U;
+    packet=fresh.header(PacketKind::msc,now);packet.text=request.dump();fresh.send(packet);restart_run(1100000);
+    check(view(fresh,"slots").previous->id==next_id,"Slots did not recover after restart: "+state(fresh).message+" expected "+std::to_string(next_id)+" got "+std::to_string(view(fresh,"slots").previous->id));
+    restarted.stop("Slots restart complete");std::filesystem::remove_all(folder);return failures;
 }

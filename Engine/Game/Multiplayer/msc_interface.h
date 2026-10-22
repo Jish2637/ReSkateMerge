@@ -57,6 +57,13 @@ inline GameRound game_round(const Json& j) {
     if(!j.at("members").is_array() || j.at("members").size()>64 || !j.at("rolls").is_array() || j.at("rolls").size()>24)throw std::runtime_error("Invalid MSC game size");
     for(const auto& p:j.at("members"))r.members.push_back({identity(p,"id"),integer(p,"payout"),text(p,"name",128)});
     for(const auto& p:j.at("rolls")){const auto value=integer(p,"value");if(value<1 || value>6)throw std::runtime_error("Invalid MSC die");r.rolls.push_back({integer(p,"round"),identity(p,"player"),value});}
+    if(j.contains("reels") && j.at("reels").is_array()) {
+        const auto& reels=j.at("reels");
+        if(reels.size()==3) {
+            for(unsigned i=0;i<3;++i){if(!reels.at(i).is_number_unsigned())throw std::runtime_error("Invalid MSC slot reel");const auto value=reels.at(i).get<std::uint64_t>();if(value>=5)throw std::runtime_error("Invalid MSC slot symbol");r.reels[i]=static_cast<unsigned>(value);}
+            r.has_reels=true;r.multiplier=integer(j,"multiplier");if(r.multiplier>25)throw std::runtime_error("Invalid MSC slot multiplier");
+        } else if(!reels.empty())throw std::runtime_error("Invalid MSC slot reel count");
+    }
     if(r.initial>13 || r.second>13)throw std::runtime_error("Invalid MSC card");
     return r;
 }
@@ -67,6 +74,10 @@ inline void features(Snapshot& s,const Json& j) {
         for(const auto& v:j.at("games")) {
             GameView g;g.id=text(v,"id",32);g.label=text(v,"label",64);g.reason=text(v,"reason",256);g.enabled=v.at("enabled").get<bool>();
             g.minimum=integer(v,"minimum");g.maximum=integer(v,"maximum");g.capacity=integer(v,"capacity");
+            if(g.id=="slots") {
+                g.cooldown=v.contains("cooldown")?integer(v,"cooldown"):0;
+                if(v.contains("wins")){const auto& wins=v.at("wins");if(!wins.is_array() || wins.size()>5)throw std::runtime_error("Invalid MSC slots winners");for(const auto& row:wins)g.wins.push_back({text(row,"name",48),integer(row,"stake"),integer(row,"payout")});}
+            }
             if(!v.at("actions").is_array() || v.at("actions").size()>8)throw std::runtime_error("Invalid MSC game actions");
             for(const auto& a:v.at("actions")){if(!a.is_string() || a.string().size()>16)throw std::runtime_error("Invalid game action");g.actions.push_back(a.string());}
             if(!v.at("round").is_null())g.round=game_round(v.at("round"));if(!v.at("previous").is_null())g.previous=game_round(v.at("previous"));if(g.id=="highlow" && ((g.round && !g.round->initial) || (g.previous && !g.previous->initial)))throw std::runtime_error("Invalid High / Low card");s.games.push_back(std::move(g));

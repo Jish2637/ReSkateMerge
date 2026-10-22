@@ -234,10 +234,12 @@ Layout layout(const ServerConfig &c) {
     wagers.set("coinflip_enabled",c.wagers.coinflip_enabled);
     wagers.set("dice_enabled",c.wagers.dice_enabled);
     wagers.set("highlow_enabled",c.wagers.highlow_enabled);
+    wagers.set("slots_enabled",c.wagers.slots_enabled);
     wagers.set("min_stake",c.wagers.min_stake);
     wagers.set("coinflip_max_stake",c.wagers.coinflip_max_stake);
     wagers.set("dice_max_stake",c.wagers.dice_max_stake);
     wagers.set("highlow_max_stake",c.wagers.highlow_max_stake);
+    wagers.set("slots_max_stake",c.wagers.slots_max_stake);
     wagers.set("lobby_timeout_seconds",c.wagers.lobby_timeout_seconds);
     wagers.set("highlow_timeout_seconds",c.wagers.highlow_timeout_seconds);
     auto &stats = root.section("player_stats");
@@ -380,6 +382,7 @@ ServerConfig load_config(const std::filesystem::path &file, std::vector<std::str
     c.wagers.coinflip_enabled=get("wagers","coinflip_enabled",c.wagers.coinflip_enabled);
     c.wagers.dice_enabled=get("wagers","dice_enabled",c.wagers.dice_enabled);
     c.wagers.highlow_enabled=get("wagers","highlow_enabled",c.wagers.highlow_enabled);
+    c.wagers.slots_enabled=get("wagers","slots_enabled",c.wagers.slots_enabled);
     if(const auto *v=find("wagers","min_stake")) {
         if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.min_stake must be an integer from 1 to 1000000.");
         c.wagers.min_stake=v->get<unsigned>();
@@ -395,6 +398,10 @@ ServerConfig load_config(const std::filesystem::path &file, std::vector<std::str
     if(const auto *v=find("wagers","highlow_max_stake")) {
         if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.highlow_max_stake must be an integer from 1 to 1000000.");
         c.wagers.highlow_max_stake=v->get<unsigned>();
+    }
+    if(const auto *v=find("wagers","slots_max_stake")) {
+        if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.slots_max_stake must be an integer from 1 to 1000000.");
+        c.wagers.slots_max_stake=v->get<unsigned>();
     }
     if(const auto *v=find("wagers","lobby_timeout_seconds")) {
         if(!v->is_number_integer() || v->get<double>()<1 || v->get<double>()>1000000)throw std::runtime_error("wagers.lobby_timeout_seconds must be an integer from 1 to 1000000.");
@@ -1073,10 +1080,10 @@ std::string park_mods_error(const ServerConfig &c) {
 std::string config_error(const ServerConfig &c) {
     for(const auto value:{c.shop.joinmsg_price,c.shop.colourbundle_price,c.shop.shimmerbundle_price,c.shop.joinmsg_max_length,c.shop.joinmsg_cooldown_seconds})
         if(!value || value>1000000)return "shop: expansion prices and limits must be 1 to 1000000.";
-    for(const auto value:{c.wagers.min_stake,c.wagers.coinflip_max_stake,c.wagers.dice_max_stake,c.wagers.highlow_max_stake,c.wagers.lobby_timeout_seconds,c.wagers.highlow_timeout_seconds})
+    for(const auto value:{c.wagers.min_stake,c.wagers.coinflip_max_stake,c.wagers.dice_max_stake,c.wagers.highlow_max_stake,c.wagers.slots_max_stake,c.wagers.lobby_timeout_seconds,c.wagers.highlow_timeout_seconds})
         if(!value || value>1000000)return "wagers: stakes and timeouts must be 1 to 1000000.";
     if(c.shop.joinmsg_max_length>1000)return "shop: joinmsg_max_length must not exceed 1000.";
-    if(c.wagers.min_stake>c.wagers.coinflip_max_stake || c.wagers.min_stake>c.wagers.dice_max_stake || c.wagers.min_stake>c.wagers.highlow_max_stake)return "wagers: minimum stake exceeds a maximum.";
+    if(c.wagers.min_stake>c.wagers.coinflip_max_stake || c.wagers.min_stake>c.wagers.dice_max_stake || c.wagers.min_stake>c.wagers.highlow_max_stake || c.wagers.min_stake>c.wagers.slots_max_stake)return "wagers: minimum stake exceeds a maximum.";
     if(!c.shop.tag_price || !c.shop.colour_price || !c.shop.shimmer_price || c.shop.tag_price>1000000 || c.shop.colour_price>1000000 || c.shop.shimmer_price>1000000)return "shop: prices must be from 1 to 1000000.";
     if (!c.player_stats.idle_seconds || !c.player_stats.daily_minutes || !c.player_stats.vip_hours || c.player_stats.vip_role.empty())
         return "player_stats: idle_seconds, daily_minutes, vip_hours and vip_role must be nonzero/nonempty.";

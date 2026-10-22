@@ -100,6 +100,7 @@ class Host {
     Json msc_games(Guest &);
     Json msc_staff(Guest &);
     void msc_game_action(Guest &,const Json &);
+    void msc_slot_spin(Guest &,std::uint64_t);
     std::string msc_staff_action(Guest &,const Json &);
     std::string msc_staff_guard(Guest &,std::string_view,const std::vector<std::string>&);
 
@@ -168,9 +169,9 @@ class Host {
         bool objects_observed{};
         ObjectSpamWindow object_spam_window;
         bool msc_fp{}, shop_login_done{}, shop_tag_hidden{};
-        bool msc_ui{}, msc_capture{}, msc_leader_active{};
+        bool msc_ui{}, msc_capture{}, msc_leader_active{}, msc_slots_ui{};
         std::string msc_message,msc_last_state,msc_quote_key,msc_quote_token,msc_leader_kind="weekly";
-        std::uint64_t msc_revision{},msc_highest{},msc_until{},msc_tick{},msc_collection_page=1,msc_leader_page=1;
+        std::uint64_t msc_revision{},msc_highest{},msc_until{},msc_tick{},msc_collection_page=1,msc_leader_page=1,msc_slot_next{};
         ChatBudget msc_reads,msc_mutations;
         std::map<std::uint64_t,std::pair<std::string,std::string>> msc_results;
         std::string msc_panel="shop",msc_staff_output,msc_staff_token,msc_staff_command,msc_staff_label,msc_staff_description,msc_staff_action_id,msc_staff_guard_value;

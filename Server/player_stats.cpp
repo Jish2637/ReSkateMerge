@@ -109,7 +109,7 @@ void PlayerStatsStore::open(const std::filesystem::path &path) {
             w.game=j.at("game").get<std::string>();w.state=j.at("state").get<std::string>();w.result=j.at("result").get<std::string>();
             if(j.contains("detail") && j.at("detail").is_object() && j.at("detail").dump().size()<=8192)w.detail=j.at("detail");
             if(!w.id || w.id>=next || !ids.insert(w.id).second || !w.stake || w.stake>1000000 || !w.capacity || w.capacity>multiplayer_player_limit-1 ||
-               (w.game!="coinflip" && w.game!="dice" && w.game!="highlow") ||
+               (w.game!="coinflip" && w.game!="dice" && w.game!="highlow" && w.game!="slots") ||
                (w.state!="pending" && w.state!="settled" && w.state!="refunded"))throw std::runtime_error("Invalid wager record");
             for(const auto &m:j.at("members")) {
                 const auto id=identity(m);
@@ -121,6 +121,7 @@ void PlayerStatsStore::open(const std::filesystem::path &path) {
             }
             if(w.members.empty() || w.members.size()>w.capacity || !w.members.contains(w.creator) ||
                (w.game=="highlow" && (w.members.size()!=1 || w.initial<1 || w.initial>13)) ||
+               (w.game=="slots" && (w.capacity!=1 || w.members.size()!=1 || w.state!="settled")) ||
                (w.state=="pending" && !w.payouts.empty()))throw std::runtime_error("Invalid wager membership");
             if(w.state=="pending") {
                 if(w.game=="highlow"?!highlow_players.insert(w.creator).second:!pending_games.insert(w.game).second)
@@ -128,6 +129,8 @@ void PlayerStatsStore::open(const std::filesystem::path &path) {
             } else if(w.state=="refunded") {
                 if(w.payouts.size()!=w.members.size())throw std::runtime_error("Incomplete refund");
                 for(auto id:w.members)if(w.payouts.at(id)!=w.stake)throw std::runtime_error("Invalid refund amount");
+            } else if(w.game=="slots") {
+                if(w.payouts.size()!=1 || w.payouts.begin()->second>25*w.stake)throw std::runtime_error("Invalid slots settlement");
             } else if(w.game!="highlow") {
                 if(w.payouts.size()!=1 || w.payouts.begin()->second!=w.stake*w.members.size())throw std::runtime_error("Invalid multiplayer settlement");
             } else if(w.payouts.size()!=1 || w.payouts.begin()->second>12*w.stake)throw std::runtime_error("Invalid High Low settlement");

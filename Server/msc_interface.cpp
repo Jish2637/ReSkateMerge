@@ -137,6 +137,7 @@ void Host::msc_request(Guest& g,std::string_view payload) {
         }
         if(request<=g.msc_highest){msc_send(g,request,"Request expired; refresh before trying again.");return;}
         const auto op=msc::text(j,"op",24);
+        if(j.contains("slots_ui") && j.at("slots_ui").is_boolean() && j.at("slots_ui").get<bool>())g.msc_slots_ui=true;
         const bool reading=op=="snapshot" || op=="collection" || op=="leaderboard" || op=="close" || op=="games" || op=="staff" || op=="staff-read";
         if(!(reading?g.msc_reads:g.msc_mutations).accept(now_,reading?12:6)){msc_send(g,request,"Too many MSC requests. Wait a few seconds.");return;}
         g.msc_highest=request;g.msc_until=now_+30000000;

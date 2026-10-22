@@ -31,7 +31,7 @@ bool request(Json body,bool mutation=false) {
     if(!state.connected || !state.data || (mutation && state.stale(now)))return false;
     if(state.pending) {if(!mutation)deferred_read=std::move(body);return false;}
     body["section"]=tab==4?"games":tab==5?"staff":"shop";
-    body["v"]=msc::version;body["epoch"]=std::to_string(state.epoch);body["request"]=++state.next_request;
+    body["slots_ui"]=true;body["v"]=msc::version;body["epoch"]=std::to_string(state.epoch);body["request"]=++state.next_request;
     if(!detail::queue_multiplayer_action("msc",body.dump())) {state.message="MSC request could not be queued.";return false;}
     state.pending=state.next_request;state.sent=now;refreshed=now;return true;
 }

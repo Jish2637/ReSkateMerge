@@ -55,10 +55,10 @@ int run() {
     check(config.player_stats.enabled && config.player_stats.vip_hours==25 && config.player_stats.idle_seconds==300 &&
           config.player_stats.daily_minutes==5 && config.player_stats.daily_points==25 && config.player_stats.leaderboard_minutes==60, "Legacy config did not gain MSC reward defaults");
     check(!custom_command_name_free("stats") && !custom_command_name_free("daily") && !custom_command_name_free("top"), "Stats command names can collide with custom commands");
-    check(!config.wagers.enabled && config.wagers.min_stake==10 && config.wagers.coinflip_max_stake==1000 && config.wagers.highlow_max_stake==500,"Legacy config did not gain safe wager defaults");
+    check(!config.wagers.enabled && config.wagers.min_stake==10 && config.wagers.coinflip_max_stake==1000 && config.wagers.highlow_max_stake==500 && config.wagers.slots_enabled && config.wagers.slots_max_stake==500,"Legacy config did not gain safe wager defaults");
     check(config.shop.joinmsg_price==2500 && config.shop.colourbundle_price==1500 && config.shop.shimmerbundle_price==8000,"Expansion price defaults incorrect");
-    {auto changed=config;changed.wagers.enabled=true;changed.wagers.dice_max_stake=250;changed.shop.joinmsg_enabled=false;changed.shop.joinmsg_cooldown_seconds=600;save_config(changed);
-     const auto loaded=load_config(file);check(loaded.wagers.enabled && loaded.wagers.dice_max_stake==250 && !loaded.shop.joinmsg_enabled && loaded.shop.joinmsg_cooldown_seconds==600,"Expansion config round trip failed");save_config(config);}
+    {auto changed=config;changed.wagers.enabled=true;changed.wagers.dice_max_stake=250;changed.wagers.slots_max_stake=350;changed.wagers.slots_enabled=false;changed.shop.joinmsg_enabled=false;changed.shop.joinmsg_cooldown_seconds=600;save_config(changed);
+     const auto loaded=load_config(file);check(loaded.wagers.enabled && loaded.wagers.dice_max_stake==250 && !loaded.wagers.slots_enabled && loaded.wagers.slots_max_stake==350 && !loaded.shop.joinmsg_enabled && loaded.shop.joinmsg_cooldown_seconds==600,"Expansion config round trip failed");save_config(config);}
     check(config.shop.enabled && config.shop.tag_price==250 && config.shop.colour_price==50 && config.shop.shimmer_price==2500,"Legacy config did not gain shop defaults");
     for(const auto name:{"joinmsg","colourbundle","shimmerbundle","coinflip","dice","highlow","shimmers","shop","tags","tag","colour","buy","cleartag"})check(!custom_command_name_free(name),"Shop command name collision");
     {

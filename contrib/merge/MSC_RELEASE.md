@@ -1,3 +1,13 @@
+# ReSkateMerge MSC v0.1.7 / MSC server 2.1.4 - Hub Slots
+
+Adds Slots to MSC Hub Activities, with server-generated reels, persisted stakes and payouts, a 3.5-second cooldown and recent winning spins. No public chat spin messages or chat-based Slots command. Global wagering and server permissions still apply. Optional wagers.slots_enabled defaults true; wagers.slots_max_stake defaults 500. Global wagering remains disabled wherever the existing configuration disables it.
+
+Slots requires the updated client and server. Older clients retain their original three activities through explicit per-session Slots opt-in. No S.K.A.T.E. source or behavior is changed. Production launcher binary updates are enabled through the existing release channel.
+
+Back up the executable, configuration and entire server data directory before updating. Once Slots records are saved, server 2.1.3 cannot load that ledger. Rollback requires restoring BOTH the prior server binary and its matching pre-update data backup; restoring data reverses transactions since that backup. Never test using a live economy backup that will later be copied back into production.
+
+Automated checks cover all 125 settled outcomes surviving save/reload without repeat payouts, older Hub catalogue and capability restrictions, reconnect capability reset, failed-save balance/ledger/sequence rollback, blocked retries and recovery in a fresh Host. The local full suite passed 113 tests with one game-data-dependent trainer check skipped. The user reported that the local paired build works and authorized publication. Actual older-client binary sessions are not separately recorded as verified.
+
 # ReSkateMerge MSC v0.1.6 - client-only MSC SKATE startup hotfix
 
 Retain early native match entry for an enhanced-capable lobby until the authoritative MSC start arrives, then attach the relay and detector to the event already running. Early turn information survives; duplicate starts cannot reset it. If the native match has already processed an attempt or its participants/setup differ, the local MSC match exits with a retry notice rather than fabricating an enhanced result.

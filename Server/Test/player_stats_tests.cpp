@@ -1,6 +1,7 @@
 #include "Server/leaderboard.h"
 #include "Server/player_stats.h"
 #include "Server/wager_rules.h"
+#include "Server/slot_rules.h"
 #include <cstdio>
 #include <fstream>
 #include <chrono>
@@ -172,6 +173,20 @@ int main() {
      PlayerStatsStore recovered;recovered.open(path);check(recovered.players.at(1).wager_headroom==160,"Escrow headroom not restored");
      recovered.refund_pending();recovered.save();PlayerStatsStore twice;twice.open(path);twice.refund_pending();twice.save();
      check(twice.players.at(1).wallet==100 && twice.players.at(2).wallet==100 && twice.wagers.at(0).state=="refunded","Restart refunds are not idempotent");}
+    // Every settled Slots outcome survives restart without a second payout/refund.
+    {PlayerStatsStore slots;const auto path=folder/"slots.json";slots.open(path);slots.joined(1,"Spinner",1,monday);
+     std::uint64_t balance=20000;
+     for(unsigned a=0;a<5;++a)for(unsigned b=0;b<5;++b)for(unsigned c=0;c<5;++c){
+         const auto multiplier=slot_multiplier({a,b,c});Wager w;w.id=slots.next_wager_id++;w.creator=1;w.game="slots";w.state="settled";
+         w.stake=10;w.capacity=1;w.expires=monday;w.members={1};w.payouts[1]=10*multiplier;
+         w.detail["reels"]=Json::array({a,b,c});w.detail["multiplier"]=multiplier;
+         slots.wagers.push_back(w);balance=balance-10+10*multiplier;
+     }
+     slots.players.at(1).wallet=balance;slots.save();PlayerStatsStore recovered;recovered.open(path);
+     check(recovered.wagers.size()==125 && recovered.next_wager_id==126 && recovered.players.at(1).wallet==balance,"Slots ledger or balance lost on restart");
+     for(std::size_t i=0;i<slots.wagers.size();++i)check(recovered.wagers.at(i).detail==slots.wagers.at(i).detail && recovered.wagers.at(i).payouts==slots.wagers.at(i).payouts,"Slots outcome changed on restart");
+     recovered.refund_pending();recovered.save();PlayerStatsStore twice;twice.open(path);
+     check(twice.players.at(1).wallet==balance && twice.wagers.size()==125,"Restart paid/refunded settled Slots again");}
     // Failed write preserves the last file. Malformed data is never replaced on load.
     std::filesystem::create_directory(file.string()+".tmp");bool threw=false;
     try{store.save();}catch(...){threw=true;}check(threw,"Save failure is reported");

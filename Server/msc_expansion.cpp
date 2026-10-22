@@ -3,6 +3,7 @@
 #include "server_text.h"
 #include "shop.h"
 #include "wager_rules.h"
+#include "slot_rules.h"
 #include "Engine/Core/Text/word_filter.h"
 #include <algorithm>
 #include <ctime>
@@ -150,6 +151,48 @@ bool Host::wager_commit(const std::map<std::uint64_t,PlayerStats> &before,const 
         log_(std::string("[wagers] Save failed; economy paused until restart: ")+e.what());return false;
     }
     row["status"]="committed";audit_points(std::move(row));roster_dirty_=true;return true;
+}
+void Host::msc_slot_spin(Guest& g,std::uint64_t stake) {
+    if(!g.msc_ui || !g.msc_slots_ui)throw std::runtime_error("Slots require the MSC Hub client interface.");
+    if(!config_.player_stats.enabled || !config_.wagers.enabled || !config_.wagers.slots_enabled || stats_failed_ || config_.file.empty())
+        throw std::runtime_error("Slots are disabled or player data is unavailable.");
+    if(!g.world_ready)throw std::runtime_error("Finish loading the map before spinning.");
+    if(text_timed_out(g.member.id) || !may(g.member.id,multiplayer::role_chat))
+        throw std::runtime_error("Current server permissions do not permit MSC activities.");
+    if(!stats_.players.contains(g.member.id))stats_joined(g);
+    if(stats_failed_)throw std::runtime_error("MSC player data is paused.");
+    if(now_<g.msc_slot_next)throw std::runtime_error("Finish the previous spin before playing again.");
+    if(stake<config_.wagers.min_stake || stake>config_.wagers.slots_max_stake)
+        throw std::runtime_error("The slot stake is outside the configured limits.");
+    auto& p=stats_.players.at(g.member.id);
+    if(p.wallet<stake)throw std::runtime_error("Not enough spendable MSC points.");
+    if(stats_.next_wager_id>=max_stats_counter)throw std::runtime_error("Wager sequence exhausted.");
+    // Check payout headroom before selecting the result; pending wagers already
+    // reserve their own exposure in PlayerStats::wallet_limit().
+    if(p.wallet_limit()<25*stake || p.wallet-stake>p.wallet_limit()-25*stake)
+        throw std::runtime_error("Wallet is too close to the payout limit.");
+    std::array<unsigned,3> reels{};
+    try {for(auto& r:reels)r=static_cast<unsigned>(draw(slot_symbols.size()));}
+    catch(const std::exception& e){log_(std::string("[slots] RNG failure: ")+e.what());throw std::runtime_error("Unable to generate a spin; no stake charged.");}
+    const auto multiplier=slot_multiplier(reels);
+    const auto payout=stake*multiplier;
+    const auto before=stats_.players;
+    const auto ledger=stats_.wagers;
+    const auto next=stats_.next_wager_id;
+    if(stats_.wagers.size()>=256) {
+        const auto old=std::ranges::find_if(stats_.wagers,[](const auto& w){return w.state!="pending";});
+        if(old==stats_.wagers.end())throw std::runtime_error("Wager ledger is full.");
+        stats_.wagers.erase(old);
+    }
+    Wager w;w.id=stats_.next_wager_id++;w.creator=g.member.id;w.game="slots";w.state="settled";
+    w.stake=stake;w.capacity=1;w.expires=utc_now();w.members.insert(g.member.id);w.payouts[g.member.id]=payout;
+    w.detail["reels"]=Json::array({reels[0],reels[1],reels[2]});w.detail["multiplier"]=multiplier;
+    w.result=multiplier>1?"Slots win: "+std::to_string(payout)+" MSC ("+std::to_string(multiplier)+"x)":
+        multiplier==1?"Two matching symbols: stake returned.":"No matching symbols.";
+    stats_.wagers.push_back(std::move(w));
+    p.wallet=p.wallet-stake+payout;
+    if(!wager_commit(before,ledger,next,"slots spin"))throw std::runtime_error("Slot spin could not be saved; no points changed.");
+    g.msc_slot_next=now_+3500000;
 }
 bool Host::wager_refund(std::size_t index,std::string_view reason,std::uint64_t leaving) {
     if(index>=stats_.wagers.size() || stats_.wagers[index].state!="pending")return false;

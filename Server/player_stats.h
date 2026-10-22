@@ -25,8 +25,8 @@ struct ShopSettings {
     unsigned joinmsg_max_length = 60, joinmsg_cooldown_seconds = 300;
 };
 struct WagerSettings {
-    bool enabled = false, coinflip_enabled = true, dice_enabled = true, highlow_enabled = true;
-    unsigned min_stake = 10, coinflip_max_stake = 1000, dice_max_stake = 1000, highlow_max_stake = 500;
+    bool enabled = false, coinflip_enabled = true, dice_enabled = true, highlow_enabled = true, slots_enabled = true;
+    unsigned min_stake = 10, coinflip_max_stake = 1000, dice_max_stake = 1000, highlow_max_stake = 500, slots_max_stake = 500;
     unsigned lobby_timeout_seconds = 300, highlow_timeout_seconds = 120;
 };
 struct Wager {

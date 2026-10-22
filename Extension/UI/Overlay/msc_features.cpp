@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <limits>
 
 namespace dingosdk::overlay::menu {
 namespace {
@@ -39,13 +40,33 @@ void die(unsigned value,float size) {
 }
 void result(SkateMenu& menu,const Model& model,const msc::GameView& game,const msc::GameRound& round,std::uint64_t viewer) {
     auto& reveal=reveals[game.id];
-    if(reveal.result!=round.id){reveal.result=round.id;reveal.started=reveal.pending==round.id && round.state=="settled"?ImGui::GetTime():-1000;}
+    if(reveal.result!=round.id){
+        const bool armed=(reveal.pending==round.id || (game.id=="slots" && reveal.pending==std::numeric_limits<std::uint64_t>::max()));
+        reveal.result=round.id;reveal.started=armed && round.state=="settled"?ImGui::GetTime():-1000;reveal.pending=0;
+    }
     const double elapsed=ImGui::GetTime()-reveal.started;
-    const double step=.65, duration=game.id=="dice" && !round.rolls.empty()?step*round.rolls.size():game.id=="coinflip"?3.0:2.4;
+    const double step=.65, duration=game.id=="dice" && !round.rolls.empty()?step*round.rolls.size():game.id=="coinflip"?3.0:game.id=="slots"?3.0:2.4;
     const bool showing=elapsed<duration;
     begin_card(menu,"msc-game-result",showing?"REVEALING RESULT":"ACTIVITY RESULT");
     ImGui::Text("%s | Round #%llu",game.label.c_str(),static_cast<unsigned long long>(round.id));
-    if(game.id=="dice" && !round.rolls.empty()) {
+    if(game.id=="slots" && round.has_reels) {
+        if(showing)note("Reels spinning... The server already recorded the result.");
+        const char* names[]{"CHERRY","LEMON","BELL","SEVEN","DIAMOND"};
+        if(ImGui::BeginTable("msc-slot-reels",3,ImGuiTableFlags_SizingStretchSame|ImGuiTableFlags_BordersInnerV)) {
+            for(unsigned i=0;i<3;++i) {
+                ImGui::TableNextColumn();
+                const bool spinning=showing && elapsed<1.2+.7*i;
+                const unsigned symbol=spinning?static_cast<unsigned>(elapsed*(16+i*4)+i*3)%5:round.reels[i];
+                const auto at=ImGui::GetCursorScreenPos();const auto size=ImVec2(ImGui::GetContentRegionAvail().x,px(82));
+                ImGui::GetWindowDrawList()->AddRectFilled(at,ImVec2(at.x+size.x,at.y+size.y),spinning?IM_COL32(52,62,78,255):IM_COL32(29,45,54,255),px(7));
+                ImGui::Dummy(size);
+                ImGui::SetCursorScreenPos(ImVec2(at.x+px(6),at.y+px(25)));
+                ImGui::PushFont(menu.title);ImGui::TextUnformatted(names[symbol]);ImGui::PopFont();
+                ImGui::SetCursorScreenPos(ImVec2(at.x,at.y+size.y+ImGui::GetStyle().ItemSpacing.y));
+            }ImGui::EndTable();
+        }
+        if(!showing)ImGui::Text("Payout multiplier: %llux",static_cast<unsigned long long>(round.multiplier));
+    } else if(game.id=="dice" && !round.rolls.empty()) {
         const auto visible=showing?std::min(round.rolls.size(),static_cast<std::size_t>(elapsed/step)+1):round.rolls.size();
         if(showing)note("Rolling each die in order... Tied highest rolls reroll.");
         if(ImGui::BeginTable("msc-dice-rolls",3,ImGuiTableFlags_SizingStretchSame)) {
@@ -103,7 +124,24 @@ void draw_msc_games(SkateMenu& menu,const Model& model,const msc::Snapshot& data
     ImGui::Text("Stake limits: %s - %s",money(game.minimum).c_str(),money(game.maximum).c_str());
     ImGui::Text("Spendable wallet: %s",money(data.profile.balance).c_str());
     if(data.profile.unlimited)note("Wagers use real spendable wallet funds, including for administrators.");
-    if(!game.round) {
+    if(game.id=="slots") {
+        note("Three reels, five symbols. Any pair returns your stake; three matching symbols pay the prize shown below.");
+        ImGui::TextUnformatted("3 x CHERRY: 3x | LEMON: 5x | BELL: 8x | SEVEN: 15x | DIAMOND: 25x");
+        auto& input=stakes[game.id];if(!input[0])std::snprintf(input.data(),input.size(),"%llu",static_cast<unsigned long long>(game.minimum));
+        ImGui::InputText("Stake",input.data(),input.size(),ImGuiInputTextFlags_CharsDecimal);
+        std::uint64_t amount{};const bool valid=whole(input.data(),amount) && amount>=game.minimum && amount<=game.maximum && amount<=data.profile.balance;
+        if(game.cooldown)ImGui::Text("Next spin available in %llu s",static_cast<unsigned long long>(game.cooldown));
+        ImGui::BeginDisabled(disabled || !game.enabled || !valid || !msc::game_allows(game,"spin"));
+        if(ImGui::Button("SPIN REELS")) {
+            auto b=Json::object();b["op"]="game";b["game"]=game.id;b["action"]="spin";b["round"]=0U;b["stake"]=amount;
+            if(send(std::move(b),true))reveals[game.id].pending=std::numeric_limits<std::uint64_t>::max();
+        }
+        ImGui::EndDisabled();
+        if(!game.wins.empty()) {
+            ImGui::SeparatorText("RECENT SLOT WINS");
+            for(const auto& win:game.wins)ImGui::Text("%s won %s (%llux)",safe(model,win.name).c_str(),money(win.payout).c_str(),static_cast<unsigned long long>(win.stake?win.payout/win.stake:0));
+        }
+    } else if(!game.round) {
         note(game.id=="highlow"?"Reserve a stake, then predict higher or lower. Numbers are 1-13; a tie refunds the stake.":"Open or join an equal-stake lobby. Its creator starts the game; the winner receives the full pot.");
         auto& input=stakes[game.id];if(!input[0])std::snprintf(input.data(),input.size(),"%llu",static_cast<unsigned long long>(game.minimum));
         ImGui::InputText("Stake",input.data(),input.size(),ImGuiInputTextFlags_CharsDecimal);

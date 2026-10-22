@@ -150,3 +150,7 @@ The release runs the full configured CTest suite and records final counts in BUI
 Regression tests reproduce native entry before the authenticated host start, early local/opponent turns, same-tick ordering, duplicate entry/start messages, enhanced submission/replay, cleanup and unsafe recovery. Vanilla startup and bit-exact native attempts retain their existing behavior with no detector or settings changes. The released v0.1.5 relay is tested separately against the new regression to establish that it detects the reported failure. Full configured release results are recorded in BUILD_INFO and release notes; use a fresh temporary root because the existing server fixtures retain fixed-path history across runs.
 
 The new fix requires a live MSC/MSC game to confirm the log-reproduced issue is resolved in-game. No server update is built or published.
+
+## Version 0.1.7 / server 2.1.4 Slots
+
+Local paired test build: 113 passed, zero failed, one skipped (trainer_tuning_names requires installed game data). User reported successful gameplay and authorized release. Added automated coverage includes all 125 Slots results surviving persistence, idempotent restart handling, old Hub opt-in boundaries, reconnect reset, filesystem save-failure rollback and fresh-Host recovery. Simulated host coverage does not establish actual older-client binary interoperability. S.K.A.T.E. source is unchanged. Release rebuild results are recorded in packaged BUILD_INFO.json.
