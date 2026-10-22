@@ -5,7 +5,6 @@
 #include "Engine/Game/Build/addresses.h"
 #include "Engine/Game/Build/20260929/engine.h"
 #include "Engine/Game/Build/20260929/native_cosmetics.h"
-#include "Extension/Customization/local_customization_runtime.h"
 #include "Extension/Customization/local_player_card_runtime.h"
 #include <Windows.h>
 #include <mutex>
@@ -99,14 +98,14 @@ void apply_cosmetic_recipe(std::uintptr_t base, std::uintptr_t entity, std::uint
                          "removes some): {} of this game's slots left empty, {} of their items left out.",
                          recipe.key == board_recipe_key ? "board" : "skater", empty, left_out);
     }
-    const auto reserved = [](const std::string &asset) { return profile_runtime::reserved_cosmetic(asset); };
+    // Display installed peer clothing independently of local ownership.
     for (const auto &[missing, replacement] :
-         memory.substitute_missing(resource, usable, default_cosmetic_items, reserved)) {
+         memory.substitute_missing(resource, usable, default_cosmetic_items)) {
         static std::mutex logged_mutex;
         static std::set<std::string> logged;
         std::lock_guard lock(logged_mutex);
         // Peers choose these names: remember (and log) a bounded number.
-        if (!reserved(missing) && logged.size() < 256 && logged.insert(missing).second)
+        if (logged.size() < 256 && logged.insert(missing).second)
             logging::log(logging::Level::info, logging::Channel::runtime,
                          "Multiplayer: a player wears \"{}\", which is not installed here; showing {} instead.",
                          missing, replacement.empty() ? "nothing" : replacement);

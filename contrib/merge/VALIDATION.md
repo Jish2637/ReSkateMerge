@@ -158,3 +158,7 @@ Local paired test build: 113 passed, zero failed, one skipped (trainer_tuning_na
 ## Version 0.1.8
 
 Patch for object dropper.
+
+## Version 0.1.9
+
+Sync updates for items.

@@ -1,3 +1,7 @@
+# ReSkateMerge MSC v0.1.9
+
+Sync updates for items.
+
 # ReSkateMerge MSC v0.1.8
 
 Patch for object dropper.
