@@ -11,6 +11,10 @@
 // Carried opaque in PacketKind::throwdown; the sender is the packet's source.
 namespace dingosdk::multiplayer {
 struct ThrowdownMessage {
+    // Local codec metadata; never an additional byte on the wire. Existing callers
+    // retain the MSC layout unless they explicitly select the vanilla layout.
+    enum class Format { msc, vanilla };
+    Format format = Format::msc;
     enum class Kind : std::uint8_t {
         offer = 1, // the leader opened a queue: everyone else shows it hosted by the leader
         close = 2, // the leader's queue is gone without this player (cancelled, or started without them)

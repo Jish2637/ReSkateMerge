@@ -9,6 +9,7 @@
 #include "Extension/Multiplayer/Hud/native_party.h"
 #include "Extension/Settings/named_settings.h"
 #include <Windows.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -29,6 +30,7 @@ std::vector<Call> calls;
 std::map<std::string, std::string> settings_changed;
 bool leaderboard_live = true;
 bool types_ready = true; // stands in for the event types of the level being found
+bool start_ready = true;
 std::uint64_t last_token{};
 }
 
@@ -55,6 +57,7 @@ bool queue_throwdown_add(std::uint32_t player, const std::string &series, std::u
 }
 bool queue_throwdown_remove(std::uint32_t player) noexcept { calls.push_back({"remove", {}, player}); return true; }
 bool queue_throwdown_start(const std::string &series, std::uint32_t mmid) noexcept {
+    if (!start_ready) return false;
     calls.push_back({"start", series, 0, mmid});
     return true;
 }
@@ -441,7 +444,7 @@ void skate_cleanup_flow() {
         switch (exit) {
         case 0: local(Local::ended);break;
         case 1: local(Local::quit);break;
-        case 2: receive(leader, make(Kind::close, leader, id));break;
+        case 2: local(Local::ended);break; // close is now spectator cleanup for enhanced starts
         case 3: after = no_session;break;
         case 4: ++after.world;break;
         case 5: after.local = other_peer;break;
@@ -594,8 +597,8 @@ void skate_leader_flow() {
     exited.rules_mask = 0x6f; exited.rules_verified = true;
     throwdown_relay_local(std::move(exited));
     auto out = tick(in);
-    check(out.size() == 1 && out[0].kind == Kind::offer && out[0].series == "ThrowdownSkate" && out[0].rules_mask == 0x6f &&
-              out[0].settings == std::vector<std::uint8_t>{8},
+    check(out.size() == 2 && out[0].format == ThrowdownMessage::Format::vanilla && out[1].kind == Kind::offer && out[1].series == "ThrowdownSkate" && out[1].rules_mask == 0x6f &&
+              out[1].settings == std::vector<std::uint8_t>{8},
           "A S.K.A.T.E. drop was not offered once, with its setup");
     receive(other_peer, make(Kind::join, me, 0x60));
     tick(in);
@@ -604,18 +607,20 @@ void skate_leader_flow() {
     check(take_throwdown_relay_notices().empty(), "Opening or joining a S.K.A.T.E. drop raised a notice");
     local(Local::force_started, 0x60);
     out = tick(in);
-    check(out.size() == 1 && out[0].kind == Kind::start && out[0].order == std::vector<std::uint64_t>{me, other_peer} &&
+    check(out.size() == 2 && out[1].kind == Kind::close && out[0].kind == Kind::start && out[0].order == std::vector<std::uint64_t>{me, other_peer} &&
               out[0].rules_mask == 0x6f && out[0].settings == std::vector<std::uint8_t>{8},
           "A S.K.A.T.E. start was not relayed once, with the host's setup");
     end_session();
 
-    // Setup rules that could not be read keep the drop local: it is never offered half-configured.
+    // Unreadable enhanced rules still permit a vanilla-only flag.
     tick(in);
     take_throwdown_relay_notices();
     exited = {Local::exited};
     exited.series = "ThrowdownSkate"; exited.mmid = 0x61; exited.placement = {9}; exited.settings = {8};
     throwdown_relay_local(std::move(exited));
-    check(tick(in).empty(), "A S.K.A.T.E. drop with unverified setup rules was offered");
+    out=tick(in);
+    check(out.size()==1 && out[0].format==ThrowdownMessage::Format::vanilla && !out[0].rules_revision,
+          "Unverified enhanced rules did not fall back to a vanilla-only offer");
     end_session();
     take_throwdown_relay_notices();
 }
@@ -628,17 +633,17 @@ void configurable_host_flow() {
     ThrowdownLocalAction exited{Local::exited};exited.series="ThrowdownSkate";exited.mmid=0x70;
     exited.placement={9};exited.settings={8};exited.rules_mask=0x6f;exited.rules_verified=true;
     throwdown_relay_local(exited);auto out=tick(in);
-    check(out.size()==1 && out[0].rules_revision==skate::rules_format && out[0].rules_mask==0x65 && out[0].numerical==created.hosting_preferences.numerical,"Host preferences not intersected/frozen in offer");
+    check(out.size()==2 && out[1].rules_revision==skate::rules_format && out[1].rules_mask==0x65 && out[1].numerical==created.hosting_preferences.numerical,"Host preferences not intersected/frozen in offer");
     auto join=make(Kind::join,me,0x70);
     receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
-    check(count("add")==0,"Legacy client joined configurable SKATE");take_throwdown_relay_notices();
+    check(count("add")==1,"Legacy client could not join SKATE");take_throwdown_relay_notices();
     join.rules_revision=skate::rules_format;join.rules_mask=0x65;
     receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
-    check(count("add")==0,"Client with different numerical rules joined");take_throwdown_relay_notices();
+    check(count("add")==1,"Mismatched acknowledgement duplicated membership");take_throwdown_relay_notices();
     join.numerical={130,60,720};receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
     check(count("add")==1,"Guest acknowledging complete frozen rules could not join");
     local(Local::force_started,0x70);out=tick(in);
-    check(out.size()==1 && out[0].numerical==join.numerical && out[0].rules_mask==join.rules_mask,"Start lost host snapshot");
+    check(out.size()==2 && out[0].numerical==join.numerical && out[0].rules_mask==join.rules_mask,"Start lost host snapshot");
     // A late native setup event cannot change a match after force-start sent its snapshot.
     exited.rules_mask=0xff;throwdown_relay_local(exited);tick(in);
     ThrowdownLocalAction entered{Local::entered};entered.participants={2,0x304};throwdown_relay_local(entered);tick(in);
@@ -648,12 +653,12 @@ void configurable_host_flow() {
     // A new throwdown snapshots different future-host preferences.
     tick(in);created.hosting_preferences={};throwdown_relay_local(created);tick(in);
     exited.mmid=0x71;throwdown_relay_local(exited);out=tick(in);
-    check(out.size()==1 && out[0].rules_mask==0xff && out[0].numerical==skate::NumericalRules{},"New throwdown did not use new preferences");
+    check(out.size()==2 && out[1].rules_mask==0xff && out[1].numerical==skate::NumericalRules{},"New throwdown did not use new preferences");
     end_session();
-    // Old hosts are refused before spawning a native mirror.
+    // Hosts without enhanced rules still get a native mirror.
     tick(in);auto old=offer(other_peer,0x72,"ThrowdownSkate");old.rules_revision=0;
     receive_throwdown_relay(other_peer,encode_throwdown(old));tick(in);
-    check(!find("spawn") && !take_throwdown_relay_notices().empty(),"Legacy SKATE host silently accepted");end_session();
+    check(find("spawn"),"Legacy SKATE host was refused");end_session();
 }
 void configurable_guest_flow() {
     const ThrowdownRelayInput in{me, {{leader,3}}, true, 96};tick(in);
@@ -661,7 +666,7 @@ void configurable_guest_flow() {
     offered.numerical={130,0,720};
     receive_throwdown_relay(leader,encode_throwdown(offered));tick(in);
     throwdown_relay_spawned(last_token,0x750,4);tick(in);local(Local::joined,0x750);auto out=tick(in);
-    check(out.size()==1 && out[0].kind==Kind::join && out[0].rules_revision==skate::rules_format && out[0].numerical==offered.numerical,"Guest did not acknowledge host numerical rules");
+    check(out.size()==2 && out[0].format==ThrowdownMessage::Format::vanilla && out[1].kind==Kind::join && out[1].rules_revision==skate::rules_format && out[1].numerical==offered.numerical,"Guest did not acknowledge host numerical rules");
     auto start=make(Kind::start,leader,0x73);start.rules_revision=skate::rules_format;start.rules_mask=offered.rules_mask;start.settings={4};start.order={leader,me};
     calls.clear();receive_throwdown_relay(leader,encode_throwdown(start));tick(in);
     check(!find("start"),"Guest accepted a start with different numeric rules");
@@ -942,6 +947,113 @@ void beacon_flow() {
 }
 // A level change takes the event types with it. The relay asks for them again instead of
 // remembering that it once had them, and shows a drop only when they are back.
+// Compatibility is decided from this queue, not the connected peers.
+void skate_compatibility_flow() {
+    using Format=ThrowdownMessage::Format;
+    const ThrowdownRelayInput in{me,{{leader,3},{other_peer,5}},true,501};
+    const auto raw=[](auto sender,const auto &m){receive_throwdown_relay(sender,encode_throwdown(m));};
+    std::vector<std::uint64_t> frozen_order;
+    const auto host=[&](unsigned id) {
+        end_session();tick(in);take_throwdown_relay_notices();
+        ThrowdownLocalAction a{Local::exited};a.series="ThrowdownSkate";a.mmid=id;
+        a.placement={9};a.settings={8};a.rules_mask=0x6f;a.rules_verified=true;
+        throwdown_relay_local(a);const auto out=tick(in);
+        check(out.size()==2 && out[0].format==Format::vanilla && out[1].rules_revision==1,"Host did not advertise both formats");
+        return out[1];
+    };
+    const auto join=[&](unsigned id,auto sender,bool enhanced) {
+        auto m=make(Kind::join,me,id);m.format=Format::vanilla;raw(sender,m);
+        if(enhanced){m.format=Format::msc;m.rules_revision=1;m.rules_mask=0x6f;raw(sender,m);raw(sender,m);}
+        tick(in);
+    };
+    const auto start=[&](unsigned id,bool enhanced) {
+        local(Local::force_started,id);const auto out=tick(in);
+        const auto it=std::find_if(out.begin(),out.end(),[](const auto &m){return m.kind==Kind::start;});
+        check(it!=out.end() && (it->format==Format::msc)==enhanced,"Wrong participant-based mode");
+        frozen_order=it->order;
+        check(std::count_if(out.begin(),out.end(),[](const auto &m){return m.kind==Kind::start;})==1,"Conflicting starts");
+        local(Local::force_started,id);check(tick(in).empty(),"Duplicate force start sent traffic");
+    };
+    host(0x100);join(0x100,leader,true);
+    check(count("add")==1,"Acknowledgement duplicated participant");start(0x100,true); // other_peer is only a spectator
+    host(0x140);join(0x140,leader,true);join(0x140,other_peer,true);start(0x140,true);
+    for(bool enhanced:{false,true}) {
+        host(0x141);join(0x141,leader,enhanced);
+        ThrowdownLocalAction entered{Local::entered};entered.participants={2,0x303};throwdown_relay_local(entered);
+        const auto out=tick(in);
+        check(std::count_if(out.begin(),out.end(),[](const auto &m){return m.kind==Kind::start;})==1 &&
+              skate::active()==enhanced,"Native-entered startup did not select the participant mode");
+    }
+    for(unsigned scenario=0;scenario<9;++scenario) {
+        const unsigned id=0x101+scenario;
+        host(id);join(id,leader,true);join(id,other_peer,false);
+        bool enhanced=false;
+        if(scenario==1){raw(other_peer,make(Kind::leave,me,id));tick(in);enhanced=true;}
+        if(scenario==2){auto ack=make(Kind::join,me,id);ack.rules_revision=1;ack.rules_mask=0xff;raw(other_peer,ack);tick(in);}
+        if(scenario==3){auto reduced=in;reduced.peers.pop_back();tick(reduced);enhanced=true;}
+        if(scenario==4){raw(other_peer,make(Kind::leave,me,id));tick(in);join(id,other_peer,false);}
+        if(scenario==5){auto stale=make(Kind::join,me,id-1);stale.rules_revision=1;stale.rules_mask=0x6f;raw(other_peer,stale);tick(in);}
+        if(scenario==6){auto reduced=in;reduced.peers.pop_back();tick(reduced);tick(in);join(id,other_peer,false);}
+        if(scenario==7){auto ack=make(Kind::join,me,id);ack.rules_revision=1;ack.rules_mask=0x6f;ack.numerical.spin_offset=60;raw(other_peer,ack);tick(in);}
+        if(scenario==8){auto ack=make(Kind::join,me,id);ack.rules_revision=1;ack.rules_mask=0x6f;auto bytes=encode_throwdown(ack);bytes[13]=2;receive_throwdown_relay(other_peer,bytes);tick(in);}
+        start(id,enhanced);
+        // Late acknowledgement and leave cannot renegotiate the frozen mode.
+        join(id,other_peer,true);raw(other_peer,make(Kind::leave,me,id));check(tick(in).empty(),"Late traffic renegotiated mode");
+        ThrowdownLocalAction entered{Local::entered};
+        for(auto player:frozen_order)entered.participants.push_back(player==me?2:player==leader?0x303:0x305);
+        throwdown_relay_local(entered);tick(in);
+        check(skate::active()==enhanced,"Host detector did not follow the locked mode");
+        raw(other_peer,make(Kind::leave,me,id));tick(in);
+        check(skate::active()==enhanced,"Participant leaving changed the active mode");
+    }
+    host(0x110);join(0x110,leader,true);
+    ThrowdownLocalAction changed{Local::exited};changed.series="ThrowdownSkate";changed.mmid=0x110;
+    changed.placement={9};changed.settings={7};changed.rules_mask=0xff;changed.rules_verified=true;
+    throwdown_relay_local(changed);tick(in);start(0x110,false);
+
+    // Vanilla host, and enhanced host selecting vanilla: both use native attempts.
+    for(bool advertised_enhanced:{false,true}) {
+        end_session();tick(in);auto offered=offer(leader,0x120,"ThrowdownSkate");
+        offered.format=Format::vanilla;offered.rules_mask=0;raw(leader,offered);tick(in);
+        if(advertised_enhanced){offered.format=Format::msc;offered.rules_mask=0x6f;offered.rules_revision=1;raw(leader,offered);tick(in);}
+        check(count("spawn")==1,"Dual offers made duplicate flags");
+        throwdown_relay_spawned(last_token,0x820,4);tick(in);local(Local::joined,0x820);auto out=tick(in);
+        check(out.size()==(advertised_enhanced?2:1) && out[0].format==Format::vanilla,"Guest did not send vanilla join first");
+        // A legacy offer must not erase the enhanced snapshot.
+        auto legacy=offered;legacy.format=Format::vanilla;legacy.rules_mask=legacy.rules_revision=0;legacy.settings={99};raw(leader,legacy);tick(in);
+        auto begun=make(Kind::start,leader,0x120);begun.format=Format::vanilla;begun.order={leader,me};raw(leader,begun);tick(in);
+        check(count("configure")==0,"Vanilla path added live native settings updates");
+        auto attempt=make(Kind::attempt,leader,0x120);attempt.value=1;attempt.add=true;attempt.trick[0]=43;attempt.format=Format::vanilla;
+        calls.clear();raw(other_peer,attempt);raw(leader,attempt);tick(in);
+        check(count("landed")==0,"Early attempt replayed before local event entry");
+        ThrowdownLocalAction entered{Local::entered};entered.participants={0x303,2};throwdown_relay_local(entered);tick(in);
+        check(!skate::active(),"Vanilla match activated detector");
+        auto wrong=begun;wrong.format=Format::msc;wrong.rules_revision=1;wrong.rules_mask=0x6f;wrong.settings={4};raw(leader,wrong);tick(in);
+        check(!skate::active(),"Late enhanced start changed vanilla mode");
+        ThrowdownLocalAction turn{Local::turn_started};turn.player=2;throwdown_relay_local(turn);tick(in);
+        ThrowdownLocalAction mine{Local::attempt};mine.player=2;mine.add=true;mine.trick[0]=42;throwdown_relay_local(mine);out=tick(in);
+        check(out.size()==1 && out[0].kind==Kind::attempt && out[0].format==Format::vanilla && out[0].trick[0]==42,"Native vanilla attempt not sent");
+        ThrowdownLocalAction timeout{Local::timer_failed};timeout.player=2;throwdown_relay_local(timeout);out=tick(in);
+        check(out.size()==1 && out[0].format==Format::vanilla && !out[0].add && out[0].detected.empty(),"Vanilla timeout used detector");
+        turn.player=0x303;throwdown_relay_local(turn);tick(in);
+        check(count("landed")==1,"Buffered vanilla attempt did not replay, or spectator attempt was accepted");
+        attempt.format=Format::msc;raw(leader,attempt);tick(in);check(count("landed")==1,"MSC attempt accepted during vanilla match");
+        local(Local::ended);tick(in);check(!skate::active(),"Ended vanilla game retained detector");
+    }
+    // Cleanup close is safe even if the local native start is still pending.
+    end_session();tick(in);auto offered=offer(leader,0x130,"ThrowdownSkate");offered.rules_revision=1;raw(leader,offered);tick(in);
+    throwdown_relay_spawned(last_token,0x830,4);tick(in);local(Local::joined,0x830);tick(in);
+    auto legacy=offered;legacy.format=Format::vanilla;legacy.rules_revision=legacy.rules_mask=0;raw(leader,legacy);tick(in);
+    auto begun=make(Kind::start,leader,0x130);begun.order={leader,me};begun.rules_revision=1;begun.rules_mask=0x6f;begun.settings={4};
+    calls.clear();start_ready=false;raw(leader,begun);raw(leader,make(Kind::close,leader,0x130));tick(in);
+    check(count("start")==0 && count("destroy")==0,"Spectator cleanup destroyed pending enhanced copy");
+    start_ready=true;tick(in);
+    check(count("start")==1,"Pending enhanced copy failed to start after cleanup");
+    ThrowdownLocalAction entered{Local::entered};entered.participants={0x303,2};throwdown_relay_local(entered);tick(in);
+    check(skate::active(),"Enhanced game did not recover after vanilla games");
+    raw(leader,make(Kind::close,leader,0x130));tick(in);check(skate::active(),"Cleanup close ended running enhanced game");
+    end_session();
+}
 void level_change_flow() {
     using namespace std::chrono_literals;
     const ThrowdownRelayInput in{me, {{leader, 3}}, true, 77};
@@ -994,6 +1106,7 @@ int main() {
         skate_leader_flow();
         configurable_host_flow();
         configurable_guest_flow();
+        skate_compatibility_flow();
         alone_flow();
         challenge_flow();
         beacon_flow();

@@ -95,7 +95,11 @@ struct ChallengePlan {
 };
 
 // The local player's own drop.
+enum class SkateMode { undecided, vanilla, msc_enhanced };
 struct Hosted {
+    SkateMode mode = SkateMode::undecided;
+    std::set<std::uint64_t> confirmed;
+    std::vector<std::uint64_t> start_order;
     skate::HostingPreferences preferences;
     skate::Rules rules;
     std::uint32_t id{}; // its MMID
@@ -107,6 +111,8 @@ struct Hosted {
 };
 // Another player's drop, spawned on the local server hosted by the leader's virtual id.
 struct Mirror {
+    SkateMode mode = SkateMode::undecided;
+    std::vector<std::uint64_t> start_order;
     skate::Rules rules;
     std::vector<std::uint8_t> pending_settings;
     enum class State { waiting, spawning, open, started, gone } state = State::waiting;
@@ -167,6 +173,7 @@ struct Relay {
     std::map<Key, Mirror> mirrors;
     std::optional<Key> running;
     std::string running_series;
+    SkateMode mode = SkateMode::undecided;
     skate::Rules rules;
     std::set<std::pair<std::uint64_t,std::int32_t>> detector_submitted,detector_applied;
     std::map<std::uint64_t, Score> scores;                          // remote totals in `running`
@@ -302,12 +309,19 @@ std::optional<skate::DetectedAttempt> read_detected(const ThrowdownMessage& mess
 }
 void send_offer(Relay &r, std::uint64_t now) {
     auto &h = *r.hosted;
-    if(h.series==skate_mode && !h.rules.verified)return;
+    if (h.start_sent || h.started) return;
     auto m = message(Kind::offer, r.local, h.id);
-    if(h.series==skate_mode){m.rules_mask=h.rules.values;m.rules_revision=skate::rules_format;m.numerical=h.rules.numerical;}
+    if(h.series==skate_mode && h.rules.verified){m.rules_mask=h.rules.values;m.rules_revision=skate::rules_format;m.numerical=h.rules.numerical;}
     m.series = h.series; m.placement = h.placement; m.settings = h.settings; m.order = h.members;
     const auto before = r.outgoing.size();
-    send(r, m);
+    if (h.series == skate_mode) {
+        auto vanilla = m;
+        vanilla.format = ThrowdownMessage::Format::vanilla;
+        vanilla.rules_mask = vanilla.rules_revision = 0;
+        vanilla.numerical = {};
+        send(r, vanilla);
+    }
+    if (h.series != skate_mode || h.rules.verified) send(r, m);
     if (r.outgoing.size() == before) {
         h.relayed = false; // too large to describe; stays local
         return;
@@ -332,10 +346,25 @@ void send_start(Relay &r, std::vector<std::uint64_t> order) {
     }
     if (order.size() > max_throwdown_order) order.resize(max_throwdown_order);
     auto m = message(Kind::start, r.local, h.id);
-    if(h.series==skate_mode){if(!h.rules.verified)return;m.rules_mask=h.rules.values;m.rules_revision=skate::rules_format;m.numerical=h.rules.numerical;m.settings=h.settings;}
+    if(h.series==skate_mode) {
+        h.mode = h.rules.verified && std::all_of(order.begin(), order.end(), [&](auto player) {
+            return player == r.local || h.confirmed.contains(player);
+        }) ? SkateMode::msc_enhanced : SkateMode::vanilla;
+        if (h.mode == SkateMode::msc_enhanced) {
+            m.rules_mask=h.rules.values;m.rules_revision=skate::rules_format;m.numerical=h.rules.numerical;m.settings=h.settings;
+        } else {
+            // Vanilla uses the native setup already supplied by its flag offer.
+            m.format = ThrowdownMessage::Format::vanilla;
+        }
+        r.notices.push_back(h.mode == SkateMode::msc_enhanced ? "MSC SKATE" :
+            "Vanilla SKATE selected: one or more players do not support MSC rules.");
+    }
     m.order = order;
     send(r, m);
+    h.start_order = order;
     h.start_sent = true;
+    if (h.series == skate_mode && h.mode == SkateMode::msc_enhanced)
+        send(r, message(Kind::close, r.local, h.id)); // vanilla spectators cannot decode the enhanced start
     note("your {} started with {} player(s); the other players' copies follow.", h.series, order.size());
 }
 void add_to_hosted(Relay &r) {
@@ -414,7 +443,9 @@ void resolve_quit_turn(Relay &r, std::uint64_t player) {
 // The running throwdown is over for the local player (it ended, or they quit or were let go).
 void end_running(Relay &r) {
     skate::end();trick_logger::observe_setup_menu(0,0);r.rules={};r.detector_submitted.clear();r.detector_applied.clear();
+    if (r.running) {r.early.erase(*r.running);r.early_remote.erase(*r.running);}
     r.running.reset();
+    r.mode = SkateMode::undecided;
     r.running_series.clear();
     r.shown = 0;
     r.scores.clear();
@@ -458,9 +489,17 @@ void set_running(Relay &r, const Key &key, const std::string &series) {
     r.running = key;
     r.running_series = series;
     r.rules={};r.detector_submitted.clear();r.detector_applied.clear();
+    r.mode = SkateMode::undecided;
     if(series==skate_mode) {
-        if(key.leader==r.local && r.hosted)r.rules=r.hosted->rules;
-        else if(const auto it=r.mirrors.find(key);it!=r.mirrors.end())r.rules=it->second.rules;
+        if(key.leader==r.local && r.hosted) {
+            r.mode=r.hosted->mode;
+            if(r.mode==SkateMode::msc_enhanced)r.rules=r.hosted->rules;
+        } else if(const auto it=r.mirrors.find(key);it!=r.mirrors.end()) {
+            r.mode=it->second.mode;
+            if(r.mode==SkateMode::msc_enhanced)r.rules=it->second.rules;
+        }
+    }
+    if(r.mode==SkateMode::msc_enhanced) {
         skate::begin(r.rules);trick_logger::observe_setup_menu(r.rules.values,r.rules.verified?0xff:0);
     } else skate::end();
     r.scores.clear();
@@ -520,8 +559,13 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         auto &h = *r.hosted;
         h.placement = std::move(a.placement);
         if(h.series!=skate_mode || (!h.started && !h.start_sent))h.settings = std::move(a.settings);
-        if(!h.started && !h.start_sent)h.rules={h.preferences.effective_mask(a.rules_mask),a.rules_verified,h.preferences.numerical};
-        if(h.series==skate_mode && !h.rules.verified)r.notices.push_back("S.K.A.T.E. setup rules could not be verified; this drop cannot link.");
+        if(!h.started && !h.start_sent) {
+            const skate::Rules updated{h.preferences.effective_mask(a.rules_mask),a.rules_verified,h.preferences.numerical};
+            if (h.rules.values != updated.values || h.rules.verified != updated.verified || h.rules.numerical != updated.numerical)
+                h.confirmed.clear();
+            h.rules=updated;
+        }
+        if(h.series==skate_mode && !h.rules.verified)r.notices.push_back("MSC SKATE rules could not be verified; this drop will use Vanilla SKATE.");
         if (h.relayed && !h.started) send_offer(r, now);
         break;
     }
@@ -533,7 +577,12 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
             if (m.mmid == a.mmid && m.state == Mirror::State::open && !m.joined) {
                 m.joined = true;
                 auto join=message(Kind::join,key.leader,key.id);
-                if(m.series==skate_mode){join.rules_mask=m.rules.values;join.rules_revision=skate::rules_format;join.numerical=m.rules.numerical;}
+                if(m.series==skate_mode) {
+                    join.format=ThrowdownMessage::Format::vanilla;send(r,join);
+                    if(!m.rules.verified)continue;
+                    join.format=ThrowdownMessage::Format::msc;
+                    join.rules_mask=m.rules.values;join.rules_revision=skate::rules_format;join.numerical=m.rules.numerical;
+                }
                 send(r,join);
                 note("you joined a linked {} (MMID {:#x}).", m.series, m.mmid);
             }
@@ -544,8 +593,10 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         break;
     case Local::force_started:
         if (r.hosted && r.hosted->id == a.mmid && !r.hosted->started) {
+            auto &h = *r.hosted;
             std::vector<std::uint64_t> order{r.local};
-            order.insert(order.end(), r.hosted->members.begin(), r.hosted->members.end());
+            const auto &participants=h.series==skate_mode?h.added:h.members;
+            order.insert(order.end(), participants.begin(), participants.end());
             send_start(r, std::move(order));
         }
         break;
@@ -565,6 +616,7 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         }
         for (auto &[key, m] : r.mirrors) {
             if (!m.joined || (m.state != Mirror::State::open && m.state != Mirror::State::started)) continue;
+            if (m.series == skate_mode && m.mode == SkateMode::undecided) continue;
             const bool ours = !foreign && std::all_of(players.begin(), players.end(), [&](std::uint64_t p) {
                 return p == r.local || p == key.leader || contains(m.members, p);
             });
@@ -655,6 +707,7 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         if (r.running && r.running_series == skate_mode && a.player && a.player == local_native_player_id() &&
             r.turns[r.local] > 0) {
             auto m = message(Kind::attempt, r.running->leader, r.running->id);
+            m.format = ThrowdownMessage::Format::vanilla;
             m.value = r.turns[r.local]; m.add = a.add; m.trick = a.trick;
             send(r, m);
             note("own S.K.A.T.E. attempt ({}) sent for turn {}.", a.add ? "landed" : "missed", m.value);
@@ -667,8 +720,10 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
                 if (*player == r.local && turn > 0) {
                     // Out of time with nothing submitted: the others fail this turn the same way.
                     auto m = message(Kind::attempt, r.running->leader, r.running->id);
+                    m.format = ThrowdownMessage::Format::vanilla;
                     m.value = turn; m.add = false;
                     if(r.rules.verified) {
+                        m.format = ThrowdownMessage::Format::msc;
                         if(!r.detector_submitted.insert({r.local,turn}).second)break;
                         m.rules_mask=r.rules.values;m.rules_revision=skate::rules_format;m.numerical=r.rules.numerical;
                         skate::DetectedAttempt miss;miss.id=static_cast<std::uint64_t>(turn);m.detected=detected_bytes(miss);
@@ -695,15 +750,24 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
     switch (m.kind) {
     case Kind::offer: {
         if (m.leader != sender || !relayed_mode(m.series)) return;
-        if(m.series==skate_mode && m.rules_revision!=skate::rules_format) {
-            r.notices.push_back("S.K.A.T.E. host does not support configurable rules; use matching builds.");return;
-        }
         if (mirror != r.mirrors.end()) {
             // A copy removed here (full, or left) stays removed while the leader keeps offering it.
             if (mirror->second.state == Mirror::State::gone) mirror->second.gone_at = now;
-            if(mirror->second.series==skate_mode && mirror->second.state!=Mirror::State::started) {
-                mirror->second.rules={m.rules_mask,true,m.numerical};
-                if(mirror->second.state==Mirror::State::waiting)mirror->second.settings=m.settings;
+            if(mirror->second.series==skate_mode && mirror->second.mode==SkateMode::undecided &&
+               mirror->second.state!=Mirror::State::gone) {
+                auto &copy = mirror->second;
+                if (m.rules_revision == skate::rules_format) {
+                    copy.rules={m.rules_mask,true,m.numerical};
+                    if (copy.joined) {
+                        auto ack=message(Kind::join,key.leader,key.id);
+                        ack.rules_mask=m.rules_mask;ack.rules_revision=m.rules_revision;ack.numerical=m.numerical;
+                        send(r,ack);
+                    }
+                }
+                // Preserve the MSC offer path; vanilla keeps its original native
+                // flag setup and has no live-settings update protocol.
+                if(m.rules_revision==skate::rules_format && copy.state==Mirror::State::waiting)
+                    copy.settings=m.settings;
             }
             for (const auto player : m.order) mirror_member(r, mirror->second, player, now);
             return;
@@ -714,8 +778,8 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
         for (auto &[other, copy] : r.mirrors)
             if (other.leader == m.leader) destroy_mirror(r, copy, now);
         Mirror copy;
-        // A S.K.A.T.E. leader offers its drop only once its setup rules are verified.
-        copy.rules={m.rules_mask,m.series==skate_mode,m.numerical};
+        // Vanilla offers carry native settings but no enhanced rules snapshot.
+        copy.rules={m.rules_mask,m.series==skate_mode && m.rules_revision==skate::rules_format,m.numerical};
         copy.series = m.series; copy.placement = m.placement; copy.settings = m.settings;
         for (const auto player : m.order)
             if (player != r.local && player != m.leader && !contains(copy.members, player)) copy.members.push_back(player);
@@ -725,23 +789,27 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
     }
     case Kind::close:
         if (m.leader != sender || mirror == r.mirrors.end()) return;
+        if (mirror->second.mode == SkateMode::msc_enhanced) return;
         destroy_mirror(r, mirror->second, now);
         if (r.running && *r.running == key) end_running(r);
         return;
     case Kind::join:
         if (m.leader == r.local) {
-            if (!r.hosted || r.hosted->id != m.id || r.hosted->started || !r.hosted->relayed ||
-                contains(r.hosted->members, sender))
+            if (!r.hosted || r.hosted->id != m.id || r.hosted->started || r.hosted->start_sent || !r.hosted->relayed)
                 return;
-            if(r.hosted->series==skate_mode && (m.rules_revision!=skate::rules_format || m.rules_mask!=r.hosted->rules.values || m.numerical!=r.hosted->rules.numerical)) {
-                r.notices.push_back("S.K.A.T.E. join refused: rules differ or client requires a matching build.");return;
+            auto &h=*r.hosted;
+            if(h.series==skate_mode && m.rules_revision) {
+                if (m.rules_revision==skate::rules_format && h.rules.verified &&
+                    m.rules_mask==h.rules.values && m.numerical==h.rules.numerical) h.confirmed.insert(sender);
+                else h.confirmed.erase(sender);
             }
+            if (contains(h.members,sender)) return;
             r.hosted->members.push_back(sender);
             add_to_hosted(r);
             note("a player joined your {} (virtual id {:#x}).", r.hosted->series, virtual_id(r, sender));
         } else if (mirror != r.mirrors.end()) {
             const auto& copy=mirror->second;
-            if(copy.series==skate_mode && (m.rules_revision!=skate::rules_format || m.rules_mask!=copy.rules.values || m.numerical!=copy.rules.numerical))return;
+            if(copy.mode!=SkateMode::undecided || copy.state==Mirror::State::gone || copy.state==Mirror::State::started)return;
             mirror_member(r, mirror->second, sender, now);
         }
         return;
@@ -762,8 +830,10 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
                 if (r.in_world) queue_throwdown_remove(virtual_id(r, sender));
             }
         };
-        if (m.leader == r.local && r.hosted && r.hosted->id == m.id && !r.hosted->started)
+        if (m.leader == r.local && r.hosted && r.hosted->id == m.id && !r.hosted->started && !r.hosted->start_sent) {
+            r.hosted->confirmed.erase(sender);
             remove(r.hosted->members, r.hosted->added);
+        }
         else if (mirror != r.mirrors.end() && mirror->second.state != Mirror::State::started)
             remove(mirror->second.members, mirror->second.added);
         return;
@@ -771,11 +841,22 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
     case Kind::start: {
         if (m.leader != sender || mirror == r.mirrors.end()) return;
         auto &copy = mirror->second;
-        if(copy.series==skate_mode && copy.state==Mirror::State::started)return;
+        if(copy.state==Mirror::State::gone || copy.state==Mirror::State::started || copy.mode!=SkateMode::undecided)return;
         if(copy.series==skate_mode) {
-            if(!copy.rules.verified || m.settings.empty() || m.rules_revision!=skate::rules_format || m.numerical!=copy.rules.numerical)return;
-            copy.rules={m.rules_mask,true,m.numerical};
-            if(copy.settings!=m.settings)copy.pending_settings=m.settings;
+            if (m.order.front()!=m.leader || !contains(m.order,r.local) ||
+                std::set<std::uint64_t>(m.order.begin(),m.order.end()).size()!=m.order.size()) {
+                destroy_mirror(r,copy,now);return;
+            }
+            if (m.format == ThrowdownMessage::Format::msc) {
+                if(!copy.rules.verified || m.settings.empty() || m.rules_revision!=skate::rules_format ||
+                   m.rules_mask!=copy.rules.values || m.numerical!=copy.rules.numerical)return;
+                copy.mode=SkateMode::msc_enhanced;
+                copy.pending_settings=copy.settings!=m.settings?m.settings:std::vector<std::uint8_t>{};
+            } else {
+                copy.mode=SkateMode::vanilla;
+            }
+            copy.start_order=m.order;
+            r.notices.push_back(copy.mode==SkateMode::msc_enhanced?"MSC SKATE":"Vanilla SKATE");
         }
         if (!copy.joined) { destroy_mirror(r, copy, now); return; }
         if (copy.state == Mirror::State::open) start_mirror(r, key, copy, m.order);
@@ -792,7 +873,17 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
         const bool skate_event=(mirror!=r.mirrors.end() && mirror->second.series==skate_mode) ||
             (m.leader==r.local && r.hosted && r.hosted->id==m.id && r.hosted->series==skate_mode) ||
             (r.running && *r.running==key && r.running_series==skate_mode);
-        if(m.kind==Kind::attempt && (skate_event || !m.detected.empty())) {
+        const auto mode = r.running && *r.running==key ? r.mode :
+            mirror!=r.mirrors.end() ? mirror->second.mode :
+            m.leader==r.local && r.hosted && r.hosted->id==m.id ? r.hosted->mode : SkateMode::undecided;
+        if (m.kind==Kind::attempt && skate_event) {
+            if (mode==SkateMode::undecided) return; // no attempt can precede the authoritative decision
+            if ((mode==SkateMode::vanilla) != (m.format==ThrowdownMessage::Format::vanilla)) return;
+            const auto &participants=r.running && *r.running==key ? r.players :
+                mirror!=r.mirrors.end() ? mirror->second.start_order : r.hosted->start_order;
+            if (!contains(participants,sender)) return;
+        }
+        if(m.kind==Kind::attempt && (mode==SkateMode::msc_enhanced || !m.detected.empty())) {
             if(!r.running || *r.running!=key) {
                 const auto expected=mirror!=r.mirrors.end()?mirror->second.rules:
                     (m.leader==r.local && r.hosted && r.hosted->id==m.id?r.hosted->rules:skate::Rules{});
@@ -1181,7 +1272,10 @@ void update_peers(Relay &r, const ThrowdownRelayInput &in, std::uint64_t now) {
                 if (r.in_world) queue_throwdown_remove(id);
             }
         };
-        if (r.hosted && !r.hosted->started) drop(r.hosted->members, r.hosted->added);
+        if (r.hosted && !r.hosted->started && !r.hosted->start_sent) {
+            r.hosted->confirmed.erase(player);
+            drop(r.hosted->members, r.hosted->added);
+        }
         for (auto &[key, m] : r.mirrors) {
             if (key.leader == player) destroy_mirror(r, m, now);
             else if (m.state != Mirror::State::started) drop(m.members, m.added);

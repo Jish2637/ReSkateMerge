@@ -138,3 +138,9 @@ Release validation runs the full enabled suite against the integrated source, in
 ## Version 0.1.4 / server 2.1.3
 
 Release validation reruns the full configured suite from the final merged commit. Added coverage includes compiled-version MSC launcher identity, sequenced FP heartbeats through the server duplicate filter and observer visibility beyond expiry, all-staff leaderboard filtering and no-comply display boundaries. Final counts and environment-dependent skips are recorded in the release BUILD_INFO and test report. Earlier private test 2 passed 41 selected suites; those results are not substituted for this release run. Final live FP, physical rotation and UI/controller acceptance remain unconfirmed. The rejected Unicode patch is excluded.
+
+## Version 0.1.5 client-only SKATE compatibility
+
+The user reported successful in-game testing of the compatibility update before authorizing publication. Automated dual-format codec, per-lobby selection, native replay and enhanced-detector regression results are independent of that user report. Vanilla packets were checked byte-for-byte against the compiled unmodified codec from the supplied vanilla source archive. Vanilla and MSC retain their existing setup paths; no live settings synchronization was added.
+
+The release runs the full configured CTest suite and records final counts in BUILD_INFO and release notes. No server binary is built, replaced or published. The previous server manifest entry remains pinned to its existing version and hashes at its original release URL. Gameplay does not require a server update; older server-side statistics decoders are not changed by this client release.

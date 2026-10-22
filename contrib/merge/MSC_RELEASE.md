@@ -1,3 +1,11 @@
+# ReSkateMerge MSC v0.1.5 — client-only SKATE compatibility
+
+Automatic per-throwdown compatibility selects native vanilla SKATE whenever a participant is vanilla or unconfirmed; all confirmed MSC participants retain the existing complete enhanced detector. The selection is locked before gameplay. Native flags, lobby and setup flows remain in use. The user reported successful live compatibility testing.
+
+Client installations update normally through the existing launcher. No server update is required for gameplay. This release does not rebuild or distribute the server: launcher.json retains server 2.1.3 and its previous archive/executable hashes, with a fixed URL to its original v0.1.4 asset. Existing 2.1.3 servers therefore see no binary change. Compatibility gameplay and optional server statistics decoding are separate; an older server decoder may not record vanilla-format attempts.
+
+For client-only packaging, use `python contrib/merge/package_client.py --client-only --previous-manifest PATH --previous-tag v0.1.4` after committing, rebuilding the client and completing the configured tests. The existing publisher detects client-only BUILD_INFO and uploads no server assets.
+
 # ReSkateMerge MSC v0.1.4 / MSC server 2.1.3
 
 This is the standard ReSkateMerge client and server source. The MSC server is built from the tracked Server directory, including shop/profile, ownership, leaderboards, transfers, existing game interfaces, staff tools and server-wide settings. Protocol 52 and optional /msc-ui hello 1 negotiation are preserved. Roulette, Slots and Blackjack are not included.

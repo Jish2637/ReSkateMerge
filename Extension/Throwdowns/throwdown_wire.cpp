@@ -54,6 +54,10 @@ struct Reader {
 
 bool valid_throwdown(const ThrowdownMessage &m) noexcept {
     if (!individual(m.leader) || !m.id) return false;
+    if (m.format != ThrowdownMessage::Format::msc && m.format != ThrowdownMessage::Format::vanilla) return false;
+    if (m.format == ThrowdownMessage::Format::vanilla &&
+        (m.rules_revision || m.rules_mask || !m.detected.empty() ||
+         (m.kind == ThrowdownMessage::Kind::start && !m.settings.empty()))) return false;
     if(m.rules_revision && (m.rules_revision!=skate::rules_format || !m.numerical.valid() ||
         (m.kind!=ThrowdownMessage::Kind::offer && m.kind!=ThrowdownMessage::Kind::start && m.kind!=ThrowdownMessage::Kind::attempt && m.kind!=ThrowdownMessage::Kind::join)))return false;
     switch (m.kind) {
@@ -105,8 +109,10 @@ std::vector<std::uint8_t> encode_throwdown(const ThrowdownMessage &m) {
     case ThrowdownMessage::Kind::start:
         w.integer(m.order.size(), 1);
         for (const auto id : m.order) w.integer(id, 8);
-        if (m.kind == ThrowdownMessage::Kind::start) w.blob(m.settings, 2);
-        w.integer(m.rules_mask, 1);
+        if (m.format == ThrowdownMessage::Format::msc) {
+            if (m.kind == ThrowdownMessage::Kind::start) w.blob(m.settings, 2);
+            w.integer(m.rules_mask, 1);
+        }
         break;
     case ThrowdownMessage::Kind::score:
     case ThrowdownMessage::Kind::turn_end: w.integer(static_cast<std::uint32_t>(m.value), 4); break;
@@ -119,8 +125,10 @@ std::vector<std::uint8_t> encode_throwdown(const ThrowdownMessage &m) {
         w.integer(static_cast<std::uint32_t>(m.value), 4);
         w.integer(m.add ? 1 : 0, 1);
         w.bytes.insert(w.bytes.end(), m.trick.begin(), m.trick.end());
-        w.integer(m.rules_mask, 1);
-        w.blob(m.detected, 2);
+        if (m.format == ThrowdownMessage::Format::msc) {
+            w.integer(m.rules_mask, 1);
+            w.blob(m.detected, 2);
+        }
         break;
     case ThrowdownMessage::Kind::challenge_start:
         w.integer(m.series.size(), 1);
@@ -154,6 +162,7 @@ std::vector<std::uint8_t> encode_throwdown(const ThrowdownMessage &m) {
 
 std::optional<ThrowdownMessage> decode_throwdown(std::span<const std::uint8_t> bytes) noexcept {
     try {
+        if (bytes.size() > 4096) return {};
         Reader r{bytes};
         ThrowdownMessage m;
         const auto kind = r.integer(1);
@@ -175,8 +184,11 @@ std::optional<ThrowdownMessage> decode_throwdown(std::span<const std::uint8_t> b
             const auto count = r.integer(1);
             if (!r.ok || count > max_throwdown_order) return {};
             for (std::uint64_t i = 0; i < count; ++i) m.order.push_back(r.integer(8));
-            if (m.kind == ThrowdownMessage::Kind::start) m.settings = r.blob(2, max_throwdown_params);
-            m.rules_mask = static_cast<std::uint8_t>(r.integer(1));
+            if (r.ok && r.at == bytes.size()) m.format = ThrowdownMessage::Format::vanilla;
+            else {
+                if (m.kind == ThrowdownMessage::Kind::start) m.settings = r.blob(2, max_throwdown_params);
+                m.rules_mask = static_cast<std::uint8_t>(r.integer(1));
+            }
             break;
         }
         case ThrowdownMessage::Kind::score:
@@ -195,8 +207,11 @@ std::optional<ThrowdownMessage> decode_throwdown(std::span<const std::uint8_t> b
             if (landed > 1) return {};
             m.add = landed != 0;
             for (auto &byte : m.trick) byte = static_cast<std::uint8_t>(r.integer(1));
-            m.rules_mask = static_cast<std::uint8_t>(r.integer(1));
-            m.detected = r.blob(2, max_detected_attempt);
+            if (r.ok && r.at == bytes.size()) m.format = ThrowdownMessage::Format::vanilla;
+            else {
+                m.rules_mask = static_cast<std::uint8_t>(r.integer(1));
+                m.detected = r.blob(2, max_detected_attempt);
+            }
             break;
         }
         case ThrowdownMessage::Kind::challenge_start: {
@@ -231,6 +246,8 @@ std::optional<ThrowdownMessage> decode_throwdown(std::span<const std::uint8_t> b
         }
         default: break;
         }
+        if (m.kind == ThrowdownMessage::Kind::join && r.ok && r.at == bytes.size())
+            m.format = ThrowdownMessage::Format::vanilla;
         if(r.ok && r.at<bytes.size()) {
             m.rules_revision=static_cast<std::uint8_t>(r.integer(1));
             const auto mask=static_cast<std::uint8_t>(r.integer(1));

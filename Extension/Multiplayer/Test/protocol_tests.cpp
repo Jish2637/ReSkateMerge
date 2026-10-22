@@ -727,6 +727,7 @@ void throwdown_codec() {
 
     for (const auto kind : {ThrowdownMessage::Kind::close, ThrowdownMessage::Kind::join, ThrowdownMessage::Kind::leave}) {
         ThrowdownMessage m; m.kind = kind; m.leader = leader; m.id = 5;
+        if (kind == ThrowdownMessage::Kind::join) m.format = ThrowdownMessage::Format::vanilla;
         check(decode_throwdown(encode_throwdown(m)) == m, "Throwdown control message failed to round-trip");
     }
     // Coop challenges.
@@ -799,8 +800,13 @@ void throwdown_codec() {
 
     // Every truncation, every trailing byte and every single-byte mutation either
     // decodes to a valid message or is refused; none may throw or read past the end.
-    for (std::size_t i = 0; i < message.size(); ++i)
-        check(!decode_throwdown(std::span(message.data(), i)), "A truncated throwdown message decoded");
+    for (std::size_t i = 0; i < message.size(); ++i) {
+        const auto truncated=decode_throwdown(std::span(message.data(), i));
+        // Removing exactly the historical MSC category byte leaves a complete
+        // vanilla offer, which must now decode as vanilla.
+        check(!truncated || (i+1==message.size() && truncated->format==ThrowdownMessage::Format::vanilla),
+              "A truncated throwdown message decoded");
+    }
     auto longer = message; longer.push_back(0);
     check(!decode_throwdown(longer), "A throwdown message with trailing bytes decoded");
     std::mt19937 random(7);
