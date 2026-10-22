@@ -12,7 +12,7 @@
       },
       "toolset": "v145",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "0.1.5",
+        "DINGOSDK_VERSION": "0.1.6",
         "DINGOSDK_LAUNCHER_AUTO_UPDATE": "ON",
         "DINGOSDK_RELEASE_REPO": "Jish2637/ReSkateMerge",
         "DINGOSDK_BUILD_TESTS": "OFF",

@@ -1,3 +1,11 @@
+# ReSkateMerge MSC v0.1.6 - client-only MSC SKATE startup hotfix
+
+Retain early native match entry for an enhanced-capable lobby until the authoritative MSC start arrives, then attach the relay and detector to the event already running. Early turn information survives; duplicate starts cannot reset it. If the native match has already processed an attempt or its participants/setup differ, the local MSC match exits with a retry notice rather than fabricating an enhanced result.
+
+Vanilla SKATE gameplay, judging, setup, native submissions and turns remain unchanged. No detector calculations, packet formats or server source change. The server remains 2.1.3 at its existing v0.1.4 archive and hashes. Client updates continue through the standard MSC launcher.
+
+The logged guest startup order is covered by automated regressions. Actual two-MSC-client gameplay verification of this hotfix is still pending. Earlier live feedback about v0.1.5 is not claimed as validation of this fix. The packager records live SKATE success only when explicitly passed --user-tested-skate.
+
 # ReSkateMerge MSC v0.1.5 — client-only SKATE compatibility
 
 Automatic per-throwdown compatibility selects native vanilla SKATE whenever a participant is vanilla or unconfirmed; all confirmed MSC participants retain the existing complete enhanced detector. The selection is locked before gameplay. Native flags, lobby and setup flows remain in use. The user reported successful live compatibility testing.

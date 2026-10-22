@@ -1054,6 +1054,98 @@ void skate_compatibility_flow() {
     raw(leader,make(Kind::close,leader,0x130));tick(in);check(skate::active(),"Cleanup close ended running enhanced game");
     end_session();
 }
+// Native queues can auto-start on Join before the host's wire start arrives.
+void msc_startup_race_flow() {
+    const ThrowdownRelayInput in{me,{{leader,3},{other_peer,5}},true,602};
+    const auto raw=[](auto sender,const auto &m){receive_throwdown_relay(sender,encode_throwdown(m));};
+    const auto prepare=[&](unsigned id) {
+        end_session();tick(in);take_throwdown_relay_notices();
+        auto offered=offer(leader,id,"ThrowdownSkate");offered.rules_revision=1;
+        raw(leader,offered);tick(in);throwdown_relay_spawned(last_token,0x860,4);tick(in);
+        local(Local::joined,0x860);tick(in);calls.clear();
+        auto start=make(Kind::start,leader,id);start.order={leader,me};
+        start.rules_revision=1;start.rules_mask=0x6f;start.settings={4};return start;
+    };
+    ThrowdownLocalAction entered{Local::entered};entered.participants={0x303,2};
+    const auto turn=[&](Local kind,unsigned player) {
+        ThrowdownLocalAction a{kind};a.player=player;throwdown_relay_local(a);
+    };
+    const auto ollie=[] {
+        dingosdk::trick_logger::SetSample s;s.valid=true;s.entity=1;s.state=100;s.goofy=false;s.now=1;s.steps=1;skate::sample(s);
+        s.state=201;s.now+=16;++s.steps;skate::sample(s);
+        auto row=dingosdk::Json::object();row["name"]="Ollie";row["name_resolved"]=true;row["observation_id"]=1;
+        row["raw_labels"]=dingosdk::Json::object();row["raw_labels"]["base_name"]="ID_TRICK_OLLIE";skate::observe(row);
+        s.state=100;s.now+=16;++s.steps;skate::sample(s);
+        s.sequence_ends=1;s.now+=16;++s.steps;skate::sample(s);skate::native_outcome(true,{});
+    };
+    for(unsigned ordering=0;ordering<4;++ordering) {
+        auto start=prepare(0x160+ordering);
+        if(ordering==0 || ordering==2 || ordering==3) {
+            throwdown_relay_local(entered);turn(Local::turn_started,ordering==3?0x303:2);turn(Local::turn_shown,2);
+            tick(in);check(!skate::active(),"MSC detector chose a mode before host authorization");
+            throwdown_relay_local(entered);tick(in); // duplicate entry must not erase the first turn
+            if(ordering==2) {
+                turn(Local::turn_started,2); // same tick as the network start; local actions drain first
+            }
+            raw(leader,start);tick(in);
+            check(count("start")==0,"Already-running native match received another force start");
+        } else {
+            raw(leader,start);tick(in);throwdown_relay_local(entered);tick(in);
+            turn(Local::turn_started,2);tick(in);
+            check(count("start")==1,"Normal MSC startup stopped using its native path");
+        }
+        check(skate::active(),"Early native entry lost MSC initialization");
+        if(ordering==3){turn(Local::turn_started,2);tick(in);}
+        // Neither duplicate packet nor native entry may restart the detector or turn counters.
+        raw(leader,start);throwdown_relay_local(entered);tick(in);
+        ollie();const auto out=tick(in);
+        check(out.size()==1 && out[0].kind==Kind::attempt && out[0].rules_revision==1 &&
+              out[0].value==(ordering==2?2:1) && !out[0].detected.empty(),"Recovered MSC attempt or turn number was lost/reset");
+        auto attempt=out[0];attempt.value=ordering==3?2:1;
+        turn(Local::turn_started,0x303);tick(in);calls.clear();raw(leader,attempt);tick(in);
+        check(count("landed")==1,"Remote enhanced attempt did not replay after startup recovery");
+        raw(leader,attempt);tick(in);check(count("landed")==1,"Recovered attempt replayed twice");
+        raw(leader,make(Kind::close,leader,start.id));tick(in);check(skate::active(),"Cleanup close stopped recovered MSC match");
+    }
+    for(unsigned failure=0;failure<3;++failure) {
+        auto start=prepare(0x170+failure);throwdown_relay_local(entered);tick(in);
+        if(failure==0)turn(Local::attempt,2);
+        if(failure==1)start.order.push_back(other_peer);
+        if(failure==2)start.settings={99};
+        tick(in);raw(leader,start);auto out=tick(in);
+        check(!skate::active() && count("destroy event")==1 && count("configure")==0 && count("start")==0,
+              "Unsafe MSC recovery altered setup, invented a result or started another native match");
+        check(out.size()==1 && out[0].kind==Kind::leave,"Unsafe recovery was not reported to the host");
+    }
+    for(unsigned exit=0;exit<8;++exit) {
+        auto start=prepare(0x180+exit);throwdown_relay_local(entered);tick(in);auto after=in;
+        switch(exit) {
+        case 0:local(Local::ended);break;
+        case 1:local(Local::quit);break;
+        case 2:local(Local::left);break;
+        case 3:local(Local::destroy_requested,0x860);break;
+        case 4:raw(leader,make(Kind::close,leader,start.id));break;
+        case 5:after.peers.erase(after.peers.begin());break;
+        case 6:++after.world;break;
+        case 7:local(Local::created);break;
+        }
+        tick(after);raw(leader,start);tick(after);
+        check(!skate::active() && count("start")==0,"Cancelled pending MSC startup resurrected on a late start");
+    }
+    // Observation of an enhanced-capable flag must not change vanilla's existing
+    // startup, native attempts, judging, settings or turn behavior.
+    auto start=prepare(0x190);throwdown_relay_local(entered);tick(in);
+    start.format=ThrowdownMessage::Format::vanilla;start.rules_mask=start.rules_revision=0;start.settings.clear();
+    raw(leader,start);tick(in);
+    check(!skate::active() && count("start")==1 && count("configure")==0 && count("destroy event")==0,
+          "MSC recovery modified vanilla startup");
+    throwdown_relay_local(entered);turn(Local::turn_started,2);tick(in);
+    ThrowdownLocalAction native{Local::attempt};native.player=2;native.add=true;native.trick[0]=91;
+    throwdown_relay_local(native);const auto out=tick(in);
+    check(out.size()==1 && out[0].format==ThrowdownMessage::Format::vanilla && out[0].trick[0]==91 && out[0].detected.empty(),
+          "MSC recovery modified vanilla native submission");
+    end_session();
+}
 void level_change_flow() {
     using namespace std::chrono_literals;
     const ThrowdownRelayInput in{me, {{leader, 3}}, true, 77};
@@ -1107,6 +1199,7 @@ int main() {
         configurable_host_flow();
         configurable_guest_flow();
         skate_compatibility_flow();
+        msc_startup_race_flow();
         alone_flow();
         challenge_flow();
         beacon_flow();

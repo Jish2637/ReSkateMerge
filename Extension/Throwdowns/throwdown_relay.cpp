@@ -123,6 +123,15 @@ struct Mirror {
     std::uint32_t mmid{}, max_players{};
     bool joined{}; // the local player is in it
     std::optional<std::vector<std::uint64_t>> start; // the leader started before the copy existed
+    // An enhanced-capable queue can become a native event before the host's
+    // authoritative start reaches us. Observe it without choosing a mode early.
+    struct NativeEntry {
+        std::vector<std::uint64_t> players;
+        std::map<std::uint64_t, std::int32_t> turns;
+        std::uint64_t active{}, shown{};
+        bool attempted{};
+    };
+    std::optional<NativeEntry> pending_native;
 };
 const char *state_name(Mirror::State s) {
     switch (s) {
@@ -378,6 +387,8 @@ void add_to_hosted(Relay &r) {
 // ---------------------------------------------------------------------------
 // Other players' drops.
 void destroy_mirror(Relay &r, Mirror &m, std::uint64_t now) {
+    if (m.pending_native && r.in_world) queue_throwdown_destroy_event(local_native_player_id());
+    m.pending_native.reset();
     if (m.state == Mirror::State::gone || m.state == Mirror::State::started) return;
     // A spawning copy is destroyed once its MMID is known (spawned()).
     if (m.state == Mirror::State::open && !queue_throwdown_destroy(m.mmid))
@@ -426,6 +437,9 @@ void leave_mirrors(Relay &r, std::uint32_t except) {
         if (m.joined && (!except || m.mmid != except)) {
             m.joined = false;
             if (m.state == Mirror::State::open) send(r, message(Kind::leave, key.leader, key.id));
+            if (m.pending_native) {
+                m.pending_native.reset();m.state=Mirror::State::gone;m.gone_at=now_ms();
+            }
         }
 }
 
@@ -457,6 +471,12 @@ void end_running(Relay &r) {
     r.quit.clear();
     r.departed.clear();
     r.own = {};
+    for (auto &[key, m] : r.mirrors) {
+        if (!m.pending_native) continue;
+        if (m.joined) send(r,message(Kind::leave,key.leader,key.id));
+        m.pending_native.reset();m.start.reset();m.joined=false;
+        m.state=Mirror::State::gone;m.gone_at=now_ms();
+    }
     if (r.hosted && r.hosted->started) r.hosted.reset();
     std::erase_if(r.mirrors, [](const auto &entry) { return entry.second.state == Mirror::State::started; });
 }
@@ -531,6 +551,18 @@ void set_players(Relay &r, const std::vector<std::uint64_t> &players) {
 void on_challenge_local(Relay &r, const ThrowdownLocalAction &a, std::uint64_t now);
 void on_beacon_local(Relay &r, const ThrowdownLocalAction &a, std::uint64_t now);
 void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
+    if (!r.running) {
+        for (auto &[key, m] : r.mirrors) {
+            if (!m.pending_native || !m.joined || m.mode!=SkateMode::undecided) continue;
+            auto &pending=*m.pending_native;
+            const auto player=player_of(r,a.player);
+            if (!player || !contains(pending.players,*player)) continue;
+            if (a.kind==Local::turn_started) {
+                pending.active=*player;++pending.turns[*player];
+            } else if (a.kind==Local::turn_shown) pending.shown=*player;
+            else if (a.kind==Local::attempt || a.kind==Local::timer_failed) pending.attempted=true;
+        }
+    }
     switch (a.kind) {
     case Local::beacon_placed:
     case Local::beacon_removed: on_beacon_local(r, a, now); return;
@@ -539,6 +571,12 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
     case Local::challenge_slam:
     case Local::challenge_ended: on_challenge_local(r, a, now); return;
     case Local::created:
+        for (auto &[key, m] : r.mirrors) {
+            if (m.pending_native) {
+                send(r,message(Kind::leave,key.leader,key.id));
+                destroy_mirror(r,m,now);
+            }
+        }
         r.pending_preferences=a.hosting_preferences;
         close_hosted(r); // a new drop replaces the old one
         break;
@@ -603,7 +641,7 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
     case Local::destroy_requested:
         if (r.hosted && r.hosted->id == a.mmid && !r.hosted->started) close_hosted(r);
         for (auto &[key, m] : r.mirrors)
-            if (m.mmid == a.mmid && m.state == Mirror::State::open) { m.state = Mirror::State::gone; m.gone_at = now; }
+            if (m.mmid == a.mmid && m.state == Mirror::State::open) { m.pending_native.reset();m.state = Mirror::State::gone; m.gone_at = now; }
         break;
     case Local::entered: {
         // Which queue became the event: the copy the player joined, else its own drop.
@@ -616,11 +654,19 @@ void on_local(Relay &r, ThrowdownLocalAction &a, std::uint64_t now) {
         }
         for (auto &[key, m] : r.mirrors) {
             if (!m.joined || (m.state != Mirror::State::open && m.state != Mirror::State::started)) continue;
-            if (m.series == skate_mode && m.mode == SkateMode::undecided) continue;
             const bool ours = !foreign && std::all_of(players.begin(), players.end(), [&](std::uint64_t p) {
                 return p == r.local || p == key.leader || contains(m.members, p);
             });
             if (!ours) continue;
+            if (m.series == skate_mode && m.mode == SkateMode::undecided) {
+                if (!m.rules.verified) continue; // leave vanilla startup untouched
+                if (!m.pending_native) {
+                    m.pending_native=Mirror::NativeEntry{players};
+                    note("MSC SKATE: native match entered before host start; retaining entry for MMID {:#x}.",m.mmid);
+                }
+                return;
+            }
+            if (m.mode==SkateMode::msc_enhanced && r.running && *r.running==key) return;
             m.state = Mirror::State::started;
             m.start.reset();
             set_running(r, key, m.series);
@@ -859,6 +905,30 @@ void on_message(Relay &r, std::uint64_t sender, const ThrowdownMessage &m, std::
             r.notices.push_back(copy.mode==SkateMode::msc_enhanced?"MSC SKATE":"Vanilla SKATE");
         }
         if (!copy.joined) { destroy_mirror(r, copy, now); return; }
+        if (copy.mode==SkateMode::msc_enhanced && copy.pending_native) {
+            auto pending=std::move(*copy.pending_native);
+            copy.pending_native.reset();
+            const std::set<std::uint64_t> actual(pending.players.begin(),pending.players.end());
+            const std::set<std::uint64_t> expected(m.order.begin(),m.order.end());
+            if (pending.attempted || actual!=expected || !copy.pending_settings.empty()) {
+                // Native play has advanced, or its setup differs. Never invent an
+                // MSC result from an attempt made while the detector was inactive.
+                send(r,message(Kind::leave,key.leader,key.id));
+                queue_throwdown_destroy_event(local_native_player_id());
+                copy.state=Mirror::State::gone;copy.gone_at=now;copy.joined=false;copy.start.reset();
+                r.notices.push_back("MSC SKATE startup could not synchronize; re-place the flag and retry.");
+                return;
+            }
+            copy.state=Mirror::State::started;copy.start.reset();
+            set_running(r,key,copy.series);set_players(r,m.order);
+            r.turns=std::move(pending.turns);r.active=pending.active;r.shown=pending.shown;
+            if (r.active) skate::turn(r.active==r.local);
+            note("MSC SKATE: host start attached to the native match already running (MMID {:#x}).",copy.mmid);
+            return;
+        }
+        // Vanilla retains its existing native startup path, without recovery,
+        // detector activation or any settings changes from the MSC observation.
+        copy.pending_native.reset();
         if (copy.state == Mirror::State::open) start_mirror(r, key, copy, m.order);
         else if (copy.state == Mirror::State::waiting || copy.state == Mirror::State::spawning) copy.start = m.order;
         return;

@@ -91,7 +91,7 @@ def main():
               'binaries_sha256':hashes,'ctest_tests':int(tests.attrib['tests']),
               'ctest_failures':0,'ctest_skipped':int(tests.attrib.get('skipped','0')),
               'live_game_validation':False, 'client_only':client_only,
-              'skate_compatibility_live_validation':'user_reported_pass' if client_only else 'not_recorded'}
+              'skate_compatibility_live_validation':'user_reported_pass' if '--user-tested-skate' in sys.argv else 'not_recorded'}
     (stage/'BUILD_INFO.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
     if not client_only:
         server_build=ROOT/'build/vs2026-server-release'

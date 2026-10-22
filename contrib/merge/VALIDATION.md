@@ -144,3 +144,9 @@ Release validation reruns the full configured suite from the final merged commit
 The user reported successful in-game testing of the compatibility update before authorizing publication. Automated dual-format codec, per-lobby selection, native replay and enhanced-detector regression results are independent of that user report. Vanilla packets were checked byte-for-byte against the compiled unmodified codec from the supplied vanilla source archive. Vanilla and MSC retain their existing setup paths; no live settings synchronization was added.
 
 The release runs the full configured CTest suite and records final counts in BUILD_INFO and release notes. No server binary is built, replaced or published. The previous server manifest entry remains pinned to its existing version and hashes at its original release URL. Gameplay does not require a server update; older server-side statistics decoders are not changed by this client release.
+
+## Version 0.1.6 MSC startup race
+
+Regression tests reproduce native entry before the authenticated host start, early local/opponent turns, same-tick ordering, duplicate entry/start messages, enhanced submission/replay, cleanup and unsafe recovery. Vanilla startup and bit-exact native attempts retain their existing behavior with no detector or settings changes. The released v0.1.5 relay is tested separately against the new regression to establish that it detects the reported failure. Full configured release results are recorded in BUILD_INFO and release notes; use a fresh temporary root because the existing server fixtures retain fixed-path history across runs.
+
+The new fix requires a live MSC/MSC game to confirm the log-reproduced issue is resolved in-game. No server update is built or published.
