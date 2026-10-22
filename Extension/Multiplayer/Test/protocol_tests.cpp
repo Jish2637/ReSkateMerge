@@ -1279,6 +1279,8 @@ void dedicated_server_codec() {
         check(cut.size() < 128 && name.size() > lead && (name.size() - lead) % 3 == 0, "A server name was cut inside a character");
     }
     check(!read_server_tags(tags, player), "A player's ID read as a server");
+    auto fp_tags=tags;fp_tags.insert(fp_tags.find(",n"),",jfp1");
+    check(read_server_tags(fp_tags,server)->fp_presence && !read_server_tags(tags,server)->fp_presence,"FP server capability tag was not parsed");
     check(!read_server_tags("reskate,v1,k1,c4", server), "An incompatible server version listed");
 }
 #include "msc_interface_cases.h"

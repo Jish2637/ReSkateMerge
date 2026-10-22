@@ -12,7 +12,7 @@
       },
       "toolset": "v145",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "0.1.3",
+        "DINGOSDK_VERSION": "0.1.4",
         "DINGOSDK_LAUNCHER_AUTO_UPDATE": "ON",
         "DINGOSDK_RELEASE_REPO": "Jish2637/ReSkateMerge",
         "DINGOSDK_BUILD_TESTS": "OFF",
@@ -49,10 +49,10 @@
     {
       "name": "vs2026-server-release",
       "inherits": "vs2026-x64",
-      "displayName": "MSC server 2.1.2 Windows x64",
+      "displayName": "MSC server 2.1.3 Windows x64",
       "binaryDir": "${sourceDir}/build/vs2026-server-release",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "2.1.2",
+        "DINGOSDK_VERSION": "2.1.3",
         "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "OFF",
         "DINGOSDK_BUILD_TRICK_LOGGER_TESTS": "OFF",
         "DINGOSDK_BUILD_FIRST_PERSON_HOST_TESTS": "OFF",

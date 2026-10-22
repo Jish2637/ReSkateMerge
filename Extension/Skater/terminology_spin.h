@@ -110,6 +110,16 @@ inline std::string measured_body_direction(const std::array<std::string,13>& lab
 inline std::string hardflip_alias(const std::array<std::string,13>& labels, std::string_view direction) {
     return normalized(labels[0]) == "hardflip" ? flip_alias(labels,direction).name : "";
 }
+// Display-only native No Comply convention: acknowledged rotations omit a half-turn.
+// This never changes the rotation tracker, observations or competitive signatures.
+inline std::string no_comply_display_spin(std::string_view id,const std::string& native,int measured,bool valid) {
+    if(id!="ID_TRICK_NOCOMPLY" || !valid)return native;
+    const auto text=normalized(native);
+    const int spin=text=="180"?180:text=="360"?360:text=="540"?540:text=="720"?720:0;
+    if(spin)return std::to_string(spin+180);
+    if((text.empty() || text=="0") && measured>=180)return "180";
+    return native;
+}
 struct SpinAttempt {
     std::uint64_t id{}, entity{}, start{}, end{}, claimed_row{};
     double net{}, air_net{};

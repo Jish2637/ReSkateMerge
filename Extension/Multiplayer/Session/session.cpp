@@ -1,3 +1,5 @@
+#include "Engine/Game/Multiplayer/first_person_presence.h"
+#include <atomic>
 #include "session_internal.h"
 #include "Engine/Core/Hooks/hooks.h"
 #include "Extension/Skater/drone_beacon.h"
@@ -40,6 +42,9 @@
 #include <utility>
 
 namespace dingosdk::multiplayer {
+namespace {std::atomic<std::uint64_t> fp_camera_sample{};}
+void observe_first_person(bool active) noexcept {fp_camera_sample.store(active?now_us():0,std::memory_order_release);}
+
 using namespace session_detail;
 namespace session_detail {
 std::uint64_t nonce() {
@@ -931,6 +936,30 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
                 command(request->action, request->argument, request->password);
         requests.clear();
         // Commands start asynchronous lobby timers using the current clock.
+        static FirstPersonReports fp_reports;
+        static std::uint32_t fp_serial{};
+        const auto fp_now=now_us(),sample=fp_camera_sample.load(std::memory_order_acquire);
+        const auto host=std::find_if(active_peers(s).begin(),active_peers(s).end(),[&](const auto& peer){return peer.member.id==s.host_id && peer.handshaken;});
+        const auto listed=s.servers.find(s.host_id);
+        constexpr std::string_view msc_name="-MSC-Midnight Skate Club-";
+        const bool fp_eligible=s.mode==Mode::join && dedicated_host(s) && host!=active_peers(s).end() && host->member.name.starts_with(msc_name);
+        static std::uint64_t fp_cap_host{},fp_cap_epoch{};static std::string fp_cap_payload;static bool fp_capable{};
+        if(!fp_eligible || fp_cap_host!=s.host_id || fp_cap_epoch!=s.epoch){fp_cap_host=s.host_id;fp_cap_epoch=s.epoch;fp_cap_payload.clear();fp_capable=false;}
+        if(first_person_discovery_needed(fp_eligible,listed && listed->fp_presence,!s.msc_feed.payload.empty() || s.msc_opted)) {
+            auto hello=packet(s,PacketKind::chat,fp_now);hello.text="/msc-ui hello 1";
+            s.msc_opted=send_packet(s,s.host_id,hello,true,false);
+        }
+        // The feed contains only authenticated, current-epoch dedicated-server snapshots.
+        if(fp_eligible && fp_cap_payload!=s.msc_feed.payload) {
+            fp_cap_payload=s.msc_feed.payload;
+            try{fp_capable=msc::parse(fp_cap_payload).value("fp_presence",false);}catch(...){fp_capable=false;}
+        }
+        const bool fp_supported=fp_eligible && ((listed && listed->fp_presence) || fp_capable);
+        const bool fp_active=ready && !native_party_spectating() && sample && fp_now>=sample && fp_now-sample<=500000;
+        if(const auto report=fp_reports.poll(fp_now,fp_supported?s.host_id:0,s.epoch,fp_supported,fp_active)) {
+            auto message=packet(s,PacketKind::chat,fp_now);message.text=first_person_report(*report,++fp_serial);
+            if(!send_packet(s,s.host_id,message,true,false)){fp_reports.enabled=!*report;fp_reports.due=0;}
+        }
         s.lobbies.tick(now_us());
         s.servers.tick(now_us());
         if (const auto lobby = s.lobbies.take_join()) {

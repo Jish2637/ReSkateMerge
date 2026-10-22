@@ -23,6 +23,7 @@ enum class MapLoadResult { waiting, queued, failed, missing }; // missing: the m
 using MapLoader = MapLoadResult (*)(std::string_view map, bool submitted, std::string &detail);
 void tick(std::uintptr_t base, std::uintptr_t client, bool gameplay_ready, std::string_view map,
           MapLoader loader = nullptr);
+void observe_first_person(bool active) noexcept; // actual local camera ownership, not the requested toggle
 MultiplayerModel model();
 std::string take_leave_notice(); // why the session just ended over a missing map, once; client thread
 // What the host or server said as it put the player out of the session (kicked, banned, away too

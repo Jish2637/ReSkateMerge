@@ -1,3 +1,4 @@
+#include "leaderboard.h"
 #include "server_host.h"
 #include "server_text.h"
 #include <algorithm>
@@ -12,12 +13,7 @@ std::string duration(std::uint64_t us) {
 std::string label(std::string_view kind) {
     return kind=="weekly"?"Weekly MSC points":kind=="time"?"Lifetime active playtime":kind=="events"?"Lifetime event participation":"Lifetime MSC points";
 }
-std::vector<std::uint64_t> eligible_board(const PlayerStatsStore &stats,const Roles &roles,std::string_view kind,std::int64_t utc) {
-    auto rows=stats.board(kind,utc);
-    // Resolve offline players too, before pagination, ranks, ties and leader congratulations.
-    std::erase_if(rows,[&](auto id){const auto *role=roles.of(id);return role && role->granted_all;});
-    return rows;
-}
+
 }
 void Host::stats_joined(Guest &g) {
     if(!config_.player_stats.enabled || stats_failed_)return;

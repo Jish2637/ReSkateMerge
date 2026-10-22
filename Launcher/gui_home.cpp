@@ -1,5 +1,6 @@
 #include "gui_internal.h"
 #include "gui_renderer.h"
+#include "msc_branding.h"
 
 #include "mod_manager.h"
 
@@ -555,9 +556,7 @@ void frame(Launcher& launcher, const Fonts& fonts, HWND window, Ui& ui, ModsPane
     auto* draw = ImGui::GetWindowDrawList();
     if (g_background.id) draw_photo(draw, size, time);
     else draw_background(draw, size, time);
-    std::string version = "Development build";
-    if (update::binary_updates_enabled() && state.config && !state.config->launcher.version.empty())
-        version = "Launcher " + state.config->launcher.version;
+    const auto version = launcher_branding();
     const bool greet = !launcher.settings().offline && !ui.steam_name.empty();
     draw_plate(draw, fonts, ImVec2(S(50), S(40)), greet ? "Welcome, " + ui.steam_name : std::string("ReSkate"), version,
         launcher.settings().offline ? ImTextureID{} : ui.steam_avatar);
@@ -593,10 +592,8 @@ void frame(Launcher& launcher, const Fonts& fonts, HWND window, Ui& ui, ModsPane
     case Phase::ready:
         label = "PLAY";
         // Release builds install the configured runtime before PLAY appears.
-        detail = !state.config ? std::string("Offline")
-               : !update::binary_updates_enabled() ? std::string("ReSkate development build")
-               : state.config->runtime.version.empty() ? std::string("ReSkate")
-               : "ReSkate " + state.config->runtime.version;
+        detail = !state.config ? std::string("ReSkate MSC offline")
+               : runtime_branding(state.config->runtime.version,update::binary_updates_enabled());
         break;
     case Phase::launching: label = "LAUNCHING"; enabled = false; break;
     case Phase::failed: label = "RETRY"; break;

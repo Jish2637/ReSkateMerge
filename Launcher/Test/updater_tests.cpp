@@ -2,6 +2,7 @@
 #include "Engine/Core/Json/json.h"
 #include "Engine/Core/Platform/launcher_support.h"
 #include "reskate_version.h"
+#include "Launcher/msc_branding.h"
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -56,6 +57,11 @@ void live(const fs::path& root) {
 }
 }
 int main(int argc,char** argv) {try {
+    const auto branding=dingosdk::launcher_gui::launcher_branding();
+    check(branding==(dingosdk::reskate_release_build ? "MSC Launcher v"+std::string(dingosdk::reskate_version) : "MSC Launcher \xE2\x80\x94 Development build"),"Launcher identity must use its compiled version independently of remote/offline/update state");
+    check(dingosdk::launcher_gui::runtime_branding("0.1.4",true)=="ReSkate MSC v0.1.4" &&
+          dingosdk::launcher_gui::runtime_branding("",true)=="ReSkate MSC" &&
+          dingosdk::launcher_gui::runtime_branding("",false)=="ReSkate MSC development build","Runtime status lost MSC identity");
     if(argc==4 && std::string_view(argv[1])=="--server-archive") {
         const fs::path archive=argv[2],folder=argv[3];fs::create_directories(folder);
         write(folder/"ReSkateServer.json","preserved server settings");write(folder/"data/player-stats.json","preserved wallet data");

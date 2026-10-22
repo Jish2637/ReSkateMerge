@@ -513,6 +513,7 @@ std::string native_party_status() {
     return s.status + " Map party markers: " + std::to_string(s.map_count.load()) + ".";
 }
 void set_native_party_map_markers(bool enabled) noexcept { state().map_markers.store(enabled, std::memory_order_release); }
+bool native_party_spectating() noexcept { return state().spectating.load(std::memory_order_acquire)!=0; }
 bool native_party_map_markers() noexcept { return state().map_markers.load(std::memory_order_acquire); }
 bool native_party_map_icon_visible(std::size_t slot) noexcept {
     return slot < max_remote_players && ((state().map_slots[slot / 64].load() >> (slot % 64)) & 1) != 0;
