@@ -1673,7 +1673,9 @@ std::vector<std::vector<std::uint8_t>> tick_throwdown_relay(std::uintptr_t base,
             if (const auto m = decode_throwdown(bytes)) on_message(r, sender, *m, now);
             else logging::write(logging::Level::warning, logging::Channel::progression, "Throwdowns: unreadable message from another player dropped.");
         }
-        if (!r.in_world && (r.running || r.rules.verified || skate::active())) end_running(r);
+        if (!r.in_world && (r.running || r.rules.verified || skate::active() ||
+            std::any_of(r.mirrors.begin(),r.mirrors.end(),[](const auto &entry){return entry.second.pending_native.has_value();})))
+            end_running(r);
         if(r.running && r.rules.verified && r.active==r.local && r.turns[r.local]>0) {
             if(auto result=skate::take()) {
                 const auto turn=r.turns[r.local];

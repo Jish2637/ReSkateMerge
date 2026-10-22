@@ -1117,7 +1117,7 @@ void msc_startup_race_flow() {
               "Unsafe MSC recovery altered setup, invented a result or started another native match");
         check(out.size()==1 && out[0].kind==Kind::leave,"Unsafe recovery was not reported to the host");
     }
-    for(unsigned exit=0;exit<8;++exit) {
+    for(unsigned exit=0;exit<9;++exit) {
         auto start=prepare(0x180+exit);throwdown_relay_local(entered);tick(in);auto after=in;
         switch(exit) {
         case 0:local(Local::ended);break;
@@ -1128,6 +1128,7 @@ void msc_startup_race_flow() {
         case 5:after.peers.erase(after.peers.begin());break;
         case 6:++after.world;break;
         case 7:local(Local::created);break;
+        case 8:after.in_world=false;break;
         }
         tick(after);raw(leader,start);tick(after);
         check(!skate::active() && count("start")==0,"Cancelled pending MSC startup resurrected on a late start");
