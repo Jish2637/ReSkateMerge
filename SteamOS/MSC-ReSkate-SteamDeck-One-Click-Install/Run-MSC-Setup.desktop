@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install MSC on SteamOS
+Comment=Install latest MSC and its supported Steam game build
+Icon=steam
+Terminal=false
+Exec=/usr/bin/python3 -c "import os,sys; os.execlp('konsole','konsole','--hold','-e','/usr/bin/bash',os.path.join(os.path.dirname(sys.argv[1]),'install-msc-steamos.sh'))" %k
+Categories=Game;

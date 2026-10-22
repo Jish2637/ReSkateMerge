@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install ReSkate on SteamOS
+Comment=Install ReSkate and the pinned Steam depot
+Icon=steam
+Terminal=false
+Exec=/usr/bin/python3 -c "import os,sys; os.execlp('konsole','konsole','--hold','-e','/usr/bin/bash',os.path.join(os.path.dirname(sys.argv[1]),'install-reskate-steamos.sh'))" %k
+Categories=Game;
