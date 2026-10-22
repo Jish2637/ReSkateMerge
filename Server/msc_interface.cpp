@@ -1,3 +1,5 @@
+#include "msc_presence.h"
+#include "leaderboard.h"
 #include "server_host.h"
 #include "server_text.h"
 #include "shop.h"
@@ -67,12 +69,12 @@ Json Host::msc_snapshot(Guest& g) {
     out["tags"]=std::move(tags);
     auto leaders=Json::array();std::uint64_t leader_pages=1;
     if(g.msc_leader_active && stats) {
-        const auto ids=stats_.board(g.msc_leader_kind,static_cast<std::int64_t>(std::time(nullptr)));
+        const auto ids=eligible_board(stats_,config_.roles,g.msc_leader_kind,static_cast<std::int64_t>(std::time(nullptr)));
         leader_pages=std::max<std::uint64_t>(1,(ids.size()+msc::page_size-1)/msc::page_size);
         g.msc_leader_page=std::clamp(g.msc_leader_page,std::uint64_t{1},leader_pages);
         for(auto i=(g.msc_leader_page-1)*msc::page_size;i<std::min<std::uint64_t>(ids.size(),g.msc_leader_page*msc::page_size);++i) {
             const auto id=ids[static_cast<std::size_t>(i)];const auto& player=stats_.players.at(id);auto row=Json::object();
-            row["id"]=std::to_string(id);row["rank"]=i+1;auto name=player.name;cut_text(name,128);row["name"]=name;
+            row["id"]=std::to_string(id);std::size_t rank=i;while(rank && stats_.value(stats_.players.at(ids[rank-1]),g.msc_leader_kind,static_cast<std::int64_t>(std::time(nullptr)))==stats_.value(player,g.msc_leader_kind,static_cast<std::int64_t>(std::time(nullptr))))--rank;row["rank"]=rank+1;auto name=player.name;cut_text(name,128);row["name"]=name;
             row["value"]=stats_.value(player,g.msc_leader_kind,static_cast<std::int64_t>(std::time(nullptr)));leaders.push_back(std::move(row));
         }
     }
@@ -86,6 +88,7 @@ Json Host::msc_snapshot(Guest& g) {
         auto quote=Json::object();quote["token"]=g.msc_quote_token;quote["kind"]=q.kind;quote["value"]=q.value;quote["price"]=q.price;quote["seconds"]=(q.expires-now_+999999)/1000000;out["quote"]=std::move(quote);
     } else g.msc_quote_token.clear();
     g.msc_quote_key=std::move(key);
+    out["fp_presence"]=msc_presence::supported(config_.name);
     out["games_supported"]=true;out["staff_available"]=is_staff(g.member.id);
     out["games"]=g.msc_panel=="games"?msc_games(g):Json::array();out["staff"]=g.msc_panel=="staff"?msc_staff(g):Json{};
     if(g.msc_panel!="shop"){out["products"]=Json::array();out["tags"]=Json::array();out["leaders"]=Json::array();}

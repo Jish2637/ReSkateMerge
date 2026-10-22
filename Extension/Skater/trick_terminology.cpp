@@ -615,6 +615,12 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
                 wanted[j]=patch->second;aliasing[j]=true;
             }
         }
+        if(enabled)for(unsigned i=0;i<native.size();++i) {
+            const auto observation=std::find_if(frame.begin(),frame.end(),[&](const auto& value){return value.handle==native[i].model.handle;});
+            if(observation==frame.end() || aliasing[i] || wanted[i][2]!=native[i].original[2])continue;
+            const auto corrected=no_comply_display_spin(observation->native_id,native[i].labels[2],observation->measured_spin,observation->valid);
+            if(corrected!=native[i].labels[2]){wanted[i][2]=corrected;aliasing[i]=true;}
+        }
         std::vector<binding_probe::Identity> binding_identities;
         binding_identities.reserve(native.size()*30);
         for(unsigned i=0;i<native.size();++i)for(unsigned field=0;field<15;++field) {

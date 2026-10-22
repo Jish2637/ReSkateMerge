@@ -3,7 +3,48 @@
 #include "Engine/Game/Multiplayer/msc_actions.h"
 #include "Engine/Game/Multiplayer/msc_staff.h"
 #include <set>
+#include "Engine/Game/Multiplayer/first_person_presence.h"
+#include "Engine/Game/Multiplayer/chat_rate.h"
+#include "Server/msc_presence.h"
 inline void msc_interface_cases() {
+    using dingosdk::multiplayer::first_person_camera_owned;
+    using dingosdk::multiplayer::first_person_discovery_needed;
+    check(first_person_camera_owned(true,true,false,true,true,false,false,false,true,1,true),"Owned FP camera rejected");
+    check(!first_person_camera_owned(false,true,false,true,true,false,false,false,true,1,true),"Freecam reported as FP");
+    check(!first_person_camera_owned(true,true,false,true,true,false,false,false,true,0,true),"Third person reported as FP");
+    check(!first_person_camera_owned(true,true,false,true,true,false,false,false,true,1,false),"Inactive FP camera reported");
+    check(!first_person_camera_owned(true,true,false,true,true,false,false,false,false,1,true),"Changed camera identity reported");
+    check(!first_person_camera_owned(true,true,false,true,true,false,false,true,true,1,true),"Drone reported as FP");
+    check(!first_person_camera_owned(true,true,false,false,true,false,false,false,true,1,true),"Lost local control reported as FP");
+    check(first_person_discovery_needed(true,false,false),"Missing or stale browser capability blocked discovery");
+    check(!first_person_discovery_needed(true,true,false),"Advertised capability redundantly negotiated");
+    check(!first_person_discovery_needed(false,false,false),"Unsupported server negotiated FP");
+    check(!first_person_discovery_needed(true,false,true),"MSC discovery repeated after opt in");
+    dingosdk::ChatRate presence_rate;
+    for(std::uint32_t serial=1;serial<=8;++serial) {
+        const auto report=dingosdk::multiplayer::first_person_report(true,serial);
+        check(presence_rate.accept(std::uint64_t{serial}*5000000,report,1)==dingosdk::ChatRate::Verdict::accepted,
+            "FP heartbeat rejected by actual server duplicate/flood filter");
+        bool active{};
+        check(dingosdk::server::msc_presence::parse_report(report,active) && active,"FP heartbeat rejected by server parser");
+    }
+    bool disabled=true;
+    const auto off=dingosdk::multiplayer::first_person_report(false,9);
+    check(presence_rate.accept(40000001,off,1)==dingosdk::ChatRate::Verdict::accepted &&
+        dingosdk::server::msc_presence::parse_report(off,disabled) && !disabled,"FP off report rejected after heartbeat");
+    bool wrapped{};
+    check(dingosdk::server::msc_presence::parse_report(dingosdk::multiplayer::first_person_report(true,0xffffffffU),wrapped) && wrapped,
+        "FP maximum serial rejected");
+    dingosdk::multiplayer::FirstPersonReports fp;
+    check(!fp.poll(1,1,1,false,true),"FP sent to unsupported server");
+    check(!fp.poll(2,1,1,true,false),"FP sent initial unnecessary off report");
+    check(fp.poll(3,1,1,true,true)==true,"FP enable not reported");
+    check(!fp.poll(4999999,1,1,true,true),"FP heartbeat sent early");
+    check(fp.poll(5000003,1,1,true,true)==true,"FP five-second heartbeat missing");
+    check(fp.poll(5000004,1,1,true,false)==false,"FP disable not immediate");
+    check(!fp.poll(5000005,0,0,false,true),"FP leaked across disconnect");
+    check(!fp.poll(5000006,1,2,true,false),"FP retained enabled state after reconnect");
+    check(fp.poll(5000007,1,2,true,true)==true,"FP new session enable missing");
     using dingosdk::Json;
     namespace msc=dingosdk::msc;
     auto data=Json::object();data["v"]=1U;data["revision"]=1U;data["request"]=0U;

@@ -1,4 +1,4 @@
-# ReSkateMerge v0.1.3 / MSC server 2.1.2
+# ReSkateMerge MSC v0.1.4 / MSC server 2.1.3
 
 This is the standard ReSkateMerge client and server source. The MSC server is built from the tracked Server directory, including shop/profile, ownership, leaderboards, transfers, existing game interfaces, staff tools and server-wide settings. Protocol 52 and optional /msc-ui hello 1 negotiation are preserved. Roulette, Slots and Blackjack are not included.
 
@@ -8,7 +8,7 @@ Client: extract the Windows client ZIP into your existing launcher directory aft
 
 Server: stop the server and back up its executable, configuration and entire data directory before installing. Extract the server ZIP into the existing server folder. It contains no replacement live configuration, roles, wallet data or save files. The server retains existing economy settings and reward rules; wagering stays disabled if your configuration disables it.
 
-After installing this 2.1.2 server, its existing update mechanism checks Jish2637/ReSkateMerge. Each published release provides a server archive and a server entry in launcher.json, including the archive hash and executable hash. Source pushes alone do not distribute updates. Both launcher and server honor their existing update settings and --no-update. Updates do not target the upstream repository.
+After installing this 2.1.3 server, its existing update mechanism checks Jish2637/ReSkateMerge. Each published release provides a server archive and a server entry in launcher.json, including the archive hash and executable hash. Source pushes alone do not distribute updates. Both launcher and server honor their existing update settings and --no-update. Updates do not target the upstream repository.
 
 Rollback: stop both processes and restore backed-up binaries. Restore server data with its corresponding backup only if required; restoring it reverses transactions since the backup. Previous GitHub releases remain available. No running server or game installation is changed by publication itself.
 
@@ -25,3 +25,11 @@ Ordinary clients continue to use existing chat and protocol traffic. Unsupported
 Use Visual Studio 2026 x64. Configure with `cmake --preset vs2026-x64` and build `cmake --build --preset merged-release`. For the independently versioned server, configure `cmake --preset vs2026-server-release` and build `cmake --build --preset msc-server-release`. Both builds enable the ReSkateMerge update source. Release packaging requires a clean committed tree, passed full client/server regressions and matching final commit metadata in both builds. Run `python contrib/merge/package_client.py`, then use the existing publisher prepare/publish steps after merging the release source.
 
 Published test metadata records automated results separately from gameplay acceptance. The user has tested earlier MSC builds; the latest presentation/controller appearance and full two-client acceptance still require live verification. No game-build pins or user data are changed by this release.
+
+## Version 0.1.4 / server 2.1.3 changes
+
+The launcher shows MSC Launcher v0.1.4 from its compiled version, independent of remote release metadata, offline mode or saved update preferences. Ready runtime status includes ReSkate MSC. Numeric versions and protocol 52 are unchanged in shape.
+
+No-comply terminology corrects the missing half-turn once at the display boundary, preserving physical tracking and S.K.A.T.E. judging. All staff roles, including offline/custom staff, are excluded before leaderboard ranking, pagination and announcements; balances/statistics remain stored. Automatic FP presence follows actual local camera ownership and uses sequenced five-second heartbeats to pass duplicate filtering, with the existing 15-second expiry. The Unicode role-tag proposal is excluded.
+
+Automated results are recorded in the packaged BUILD_INFO and release notes. The latest FP repair has automated observer coverage; final physical-turn calibration, in-game visual/controller checks and live two-client FP acceptance remain unconfirmed.

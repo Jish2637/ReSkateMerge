@@ -1,3 +1,5 @@
+#include "Extension/Multiplayer/Session/session.h"
+#include "Engine/Game/Multiplayer/first_person_presence.h"
 #include "FirstPerson/integration.h"
 #include "FirstPerson/Upstream/src/settings.h"
 #include "FirstPerson/Upstream/src/comfort_policy.h"
@@ -1114,15 +1116,18 @@ overlay::DebugModel on_client_debug_tick(std::uintptr_t base, std::uintptr_t cli
     state.free_camera_active.store(debug.camera_owned && !debug.first_person && !debug.drone_follow, std::memory_order_release);
     model.free_camera = debug.camera_owned && !debug.first_person && !debug.drone_follow;
     model.drone_follow = debug.camera_owned && debug.drone_follow;
-    bool addon_camera_owned{};
-    if (first_person_integration::ready() && debug.first_person && debug.camera_owned && !debug.camera_ambiguous &&
+    bool local_fp_camera_owned{};
+    if (debug.first_person && debug.camera_owned && !debug.camera_ambiguous &&
         can_control && camera_phase_observed && !debug.park_editor && !debug.noclip && !debug.drone_follow) {
         try {
             const auto camera = source_camera_snapshot(trial, client);
-            addon_camera_owned = camera.identity == debug.camera_identity && camera.mode == 1 &&
-                camera.active == camera.identity.camera && camera.view_enabled;
+            local_fp_camera_owned = multiplayer::first_person_camera_owned(debug.first_person,debug.camera_owned,
+                debug.camera_ambiguous,can_control,camera_phase_observed,debug.park_editor,debug.noclip,debug.drone_follow,
+                camera.identity == debug.camera_identity,camera.mode,camera.active == camera.identity.camera);
         } catch (...) {}
     }
+    multiplayer::observe_first_person(local_fp_camera_owned);
+    const bool addon_camera_owned=first_person_integration::ready() && local_fp_camera_owned;
     first_person_integration::observe(debug.first_person_settings, debug.first_person_fov,
         addon_camera_owned, can_control && camera_phase_observed && !debug.park_editor && !debug.noclip && !debug.drone_follow,
         debug.first_person && !debug.park_editor && !debug.noclip && !debug.drone_follow,

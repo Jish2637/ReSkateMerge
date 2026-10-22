@@ -36,6 +36,7 @@ struct MultiplayerLobby {
     int players = 1, capacity = multiplayer_player_limit;
     // A dedicated server rather than a player's lobby: joined by its code.
     bool dedicated{};
+    bool fp_presence{}; // server advertises the existing jfp1 presence reports
     // A dedicated server the ReSkate team runs (developer_identity.h): first in the browser.
     bool official{};
     int ping = -1; // ms, when the server answered directly

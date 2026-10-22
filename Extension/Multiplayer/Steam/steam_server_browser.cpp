@@ -114,6 +114,7 @@ std::optional<MultiplayerLobby> read_server_tags(std::string_view tags, std::uin
         const auto comma = tags.find(',');
         const auto tag = tags.substr(0, comma);
         tags = comma == std::string_view::npos ? std::string_view{} : tags.substr(comma + 1);
+        if (tag == "jfp1") { row.fp_presence=true; continue; }
         if (tag == "reskate") { reskate = true; continue; }
         if (tag.empty()) continue;
         const auto value = tag.substr(1);

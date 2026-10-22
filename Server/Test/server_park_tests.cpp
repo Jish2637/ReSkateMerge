@@ -8,6 +8,7 @@
 #include "Extension/Multiplayer/Session/monotonic_clock.h"
 #include "Server/moderator_help.h"
 #include "Server/msc_presence.h"
+#include "Engine/Game/Multiplayer/first_person_presence.h"
 #include "Engine/Core/Text/word_filter.h"
 #include "Engine/Game/World/world_names.h"
 #include "Server/server_parks.h"
@@ -662,6 +663,12 @@ int run(const std::filesystem::path &fixtures) {
     check(!has(a.chat,"/jish-fp 1 1"),"presence leaked into chat");
     a.say("/jish-fp 1 2",now);run_for(2000000);
     check(shown()=="[FP] Robin","heartbeat stacked prefix");
+    for(std::uint32_t serial=10;serial<18;++serial) {
+        a.say(first_person_report(true,serial),now);run_for(5000000);
+        check(shown()=="[FP] Robin","client heartbeat failed to sustain presence beyond expiry");
+        check(std::any_of(observer.roster.begin(),observer.roster.end(),[&](const auto& member){return member.id==a.id && member.name=="[FP] Robin";}),
+            "observer lost FP during five-second client heartbeats");
+    }
     a.say("/jish-fp 0 3",now);run_for(2000000);
     check(shown()=="Robin","off did not restore original");
     auto forged=observer.header(PacketKind::chat,now);forged.source=a.id;forged.text="/jish-fp 1 99";

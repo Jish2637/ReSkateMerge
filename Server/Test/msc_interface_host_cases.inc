@@ -55,6 +55,11 @@ int run_msc_interface_host() {
     check(cyan!=cyan_catalogue.products.end() && cyan->label=="Shimmer cyan" && std::ranges::count_if(cyan_catalogue.products,[](const auto& c){return c.id.starts_with("shimmer:");})==5,"Shimmer was duplicated or label still describes green");
     item("tag","admin");check(saved().equipped_tag=="Fresh","MSC reserved tag accepted");
     auto board=Json::object();board["op"]="leaderboard";board["kind"]="points";board["page"]=1U;send(board);check(state().leader_kind=="points" && !state().leaders.empty(),"MSC structured leaderboard missing");
+    check(state().leaders.size()==2 && state().leaders[0].rank==1 && state().leaders[1].rank==1,"Hub leaderboard ties were not ranked consistently");
+    config.roles.players[other]="moderator";config.roles.settle();send(board);check(state().leaders.size()==1 && state().leaders[0].id==player,"Hub leaderboard included moderator");
+    config.roles.players[player]="admin";config.roles.settle();send(board);check(state().leaders.empty() && state().leader_pages==1,"All-staff Hub board was not empty");config.roles.players.erase(player);
+    auto custom=*config.roles.find("moderator");custom.name="marshal";config.roles.list.push_back(custom);config.roles.players[other]="marshal";config.roles.settle();send(board);check(state().leaders.size()==1,"Hub leaderboard included custom staff role");
+    config.roles.players[other]="vip";config.roles.settle();send(board);check(state().leaders.size()==2,"Hub leaderboard excluded non-staff VIP");config.roles.players.erase(other);config.roles.settle();
     item("tag","Expiry");const auto expires=state().quote->token;run_for(121000000);confirm["token"]=expires;send(confirm);check(saved().equipped_tag=="Fresh","MSC expired quote purchased");
     check(q.msc_messages.empty(),"MSC leaked profile updates to a legacy client");
     // An ordinary chat command changes the same account and triggers structured refresh.

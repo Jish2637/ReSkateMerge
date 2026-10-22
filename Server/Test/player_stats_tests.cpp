@@ -1,3 +1,4 @@
+#include "Server/leaderboard.h"
 #include "Server/player_stats.h"
 #include "Server/wager_rules.h"
 #include <cstdio>
@@ -177,5 +178,15 @@ int main() {
     std::filesystem::remove(file.string()+".tmp");
     {std::ofstream out(file);out<<"broken";}threw=false;try{restarted.open(file);}catch(...){threw=true;}check(threw,"Corrupt data fails closed");
     std::filesystem::remove_all(folder);
+    {
+        Roles roles;Role player;player.name="player";Role mod;mod.name="moderator";mod.commands={"kick"};Role admin;admin.name="admin";admin.all_commands=true;Role custom=mod;custom.name="marshal";Role vip=player;vip.name="vip";
+        roles.list={player,mod,admin,custom,vip};roles.default_role="player";roles.players={{2,"moderator"},{3,"admin"},{4,"marshal"},{5,"vip"}};roles.settle();
+        PlayerStatsStore board;for(std::uint64_t id=1;id<=5;++id){auto& entry=board.players[id];entry.points=100;entry.weekly_points=100;entry.week=PlayerStatsStore::week_at(monday);entry.active_us=100;entry.events={1,1,1};}
+        for(const auto kind:{"weekly","points","time","events"}) {
+            auto rows=eligible_board(board,roles,kind,monday);check(std::ranges::find(rows,2)==rows.end() && std::ranges::find(rows,3)==rows.end() && std::ranges::find(rows,4)==rows.end(),"Staff included in leaderboard");
+            check(rows.size()==2 && std::ranges::find(rows,5)!=rows.end(),"Ordinary/VIP excluded from leaderboard");
+        }
+        roles.players[2]="vip";roles.settle();const auto rows=eligible_board(board,roles,"points",monday);check(std::ranges::find(rows,2)!=rows.end() && board.players[2].points==100,"Role change did not restore saved player statistics");
+    }
     if(!failed)std::puts("player stats tests passed");return failed?1:0;
 }

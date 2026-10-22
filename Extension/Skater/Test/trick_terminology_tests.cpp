@@ -771,5 +771,26 @@ int main() {
         check(combo_rows::insertion_index(order,999)==order.size());
         check(!ed::encode_detection(ed::decode_detection(dingosdk::Json::object())).contains("native_combo_rows"));
     }
+    for(const auto id:{"ID_TRICK_NOCOMPLY","ID_TRICK_OLLIE"})for(int spin:{0,180,360,540,720}) {
+        const auto native=spin?std::to_string(spin-180):std::string{};
+        const auto source=spin==180?std::string{}:native;
+        const auto corrected=no_comply_display_spin(id,source,spin,true);
+        check(corrected==(std::string_view(id)=="ID_TRICK_NOCOMPLY" && spin?std::to_string(spin):source));
+        check(no_comply_display_spin(id,source,spin,true)==corrected); // repeated original input cannot stack the correction
+        check(no_comply_display_spin(id,source,spin,false)==source);
+    }
+    for(const auto stance:{"","Nollie","Fakie","Switch"})for(const auto nc_direction:{"FS","BS"}) {
+        std::array<std::string,13> nc_labels{};nc_labels[0]="No Comply";nc_labels[1]=nc_direction;nc_labels[2]="180";nc_labels[3]=stance;const auto original=nc_labels;
+        nc_labels[2]=no_comply_display_spin("ID_TRICK_NOCOMPLY",nc_labels[2],180,true);
+        check(nc_labels[2]=="360" && nc_labels[0]==original[0] && nc_labels[1]==original[1] && nc_labels[3]==original[3]);
+    }
+    {
+        TextEdit edit;std::string physical="180";
+        for(int i=0;i<20;++i){const auto original=edit.observe(physical);const auto corrected=no_comply_display_spin("ID_TRICK_NOCOMPLY",original,180,true);if(corrected!=physical){edit.applied(original,corrected);physical=corrected;}check(physical=="360");}
+        check(edit.observe(physical)=="180");
+        check(no_comply_display_spin("ID_TRICK_NOCOMPLY","0",0,true)=="0");
+        check(no_comply_display_spin("ID_TRICK_NOCOMPLY","0",180,true)=="180");
+        check(no_comply_display_spin("ID_TRICK_OLLIE","180",180,true)=="180");
+    }
     std::cout << "Terminology matching and revision restoration passed\n";
 }

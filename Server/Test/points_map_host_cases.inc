@@ -61,7 +61,7 @@ int run_points_map_host() {
     check(has(games[mod].chat,"earned through playtime"),"Staff stats lost earned VIP history");
     for(const auto kind:{"weekly","points","time","events"}) {
         games[player].chat.clear();say(player,std::string("/top ")+kind);
-        check(!has(games[player].chat,"Bank Admin") && !has(games[player].chat,"Offline Admin") && has(games[player].chat,"Builder Mod"),"Leaderboard includes online/offline admins or excludes moderators");
+        check(!has(games[player].chat,"Bank Admin") && !has(games[player].chat,"Offline Admin") && !has(games[player].chat,"Builder Mod"),"Leaderboard includes online/offline staff");
         check(has(games[player].chat,"page 1/1"),"Filtering changed leaderboard pagination");
     }
     {const auto roles=config.roles;
@@ -70,7 +70,8 @@ int run_points_map_host() {
         config.roles=roles;
     }
     config.roles.players[admin]="moderator";config.roles.settle();
-    games[player].chat.clear();say(player,"/top points");check(has(games[player].chat,"1. Bank Admin"),"Demoted administrator did not return to leaderboard with saved points");
+    games[player].chat.clear();say(player,"/top points");check(!has(games[player].chat,"Bank Admin"),"Moderator returned to leaderboard");
+    config.roles.players[admin]="vip";config.roles.settle();games[player].chat.clear();say(player,"/top points");check(has(games[player].chat,"1. Bank Admin"),"Non-staff VIP did not return with saved points");
     say(admin,"/bal");say(admin,"/colour gold");say(admin,"/buy");
     check(has(games[admin].chat,"MSC balance: 100 points.") && snapshot().at(admin).wallet==50,"Removing admin failed to restore normal wallet");
     config.roles.players[admin]="admin";config.roles.settle();
