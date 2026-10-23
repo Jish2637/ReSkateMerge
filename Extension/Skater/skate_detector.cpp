@@ -1,4 +1,5 @@
 #include "skate_detector.h"
+#include "skate_feedback.h"
 #include "trick_diagnostics.h"
 #include "native_trick_metadata.h"
 #include <atomic>
@@ -10,6 +11,7 @@ namespace {
 struct State {
     std::mutex mutex;
     std::atomic<bool> enabled{},bridge_failed{};
+    TrickFeedback feedback;
     bool recovery_seen{};
     std::uint32_t native_state{};
     std::uint64_t turn_started{};
@@ -36,6 +38,7 @@ struct State {
 State& state(){static State s;return s;}
 void fail(State& s,Category c=Category::none) {
     if(s.done)return;
+    s.feedback.invalid(c==Category::none?"":forbidden(c));
     DetectedAttempt result;result.id=++s.serial;result.violation=c;
     s.ready=std::move(result);s.done=true;
     s.diagnostics.push_back(c==Category::none?"Attempt failed":forbidden(c));
@@ -49,13 +52,13 @@ void begin(Rules rules) {
 }
 void end() {
     auto& s=state();std::lock_guard lock(s.mutex);s.enabled=false;s.own=s.done=false;s.bridge_failed=false;
-    s.rules={};s.tracker=trick_logger::TrickSetTracker{true,true,false};s.rows.clear();s.ready.reset();s.legacy.reset();s.pending.clear();
+    s.feedback.clear();s.rules={};s.tracker=trick_logger::TrickSetTracker{true,true,false};s.rows.clear();s.ready.reset();s.legacy.reset();s.pending.clear();
     s.native_eligible=false;s.reverts.clear();s.wipeouts.reset();s.diagnostics.clear();s.excluded.clear();s.boundary_logged=false;
     s.target.clear();s.target_display.clear();s.target_evidence=Json::object();s.history.clear();s.serial=0;
     s.sampled=s.recovery_seen=false;s.native_state=0;s.turn_started=0;s.target_native={};
 }
 void turn(bool own) {
-    auto& s=state();std::lock_guard lock(s.mutex);s.recovery_seen=false;s.reverts.clear();s.native_state=0;s.own=own;s.done=false;s.sampled=false;s.turn_started=GetTickCount64();
+    auto& s=state();std::lock_guard lock(s.mutex);s.recovery_seen=false;s.reverts.clear();s.native_state=0;s.own=own;s.done=false;s.sampled=false;s.turn_started=GetTickCount64();s.feedback.clear();
     s.tracker=trick_logger::TrickSetTracker{true,true,s.rules.allows(Category::grinds),s.rules.numerical};s.rows.clear();s.ready.reset();s.legacy.reset();
     s.native_eligible=false;s.wipeouts.reset();
     s.excluded.clear();s.boundary_logged=false;
@@ -75,6 +78,7 @@ void observe(const Json& input) {
     // including a manual's provisional label before its revert update arrives.
     if(ignored_reason(row).empty() && s.rules.allows(c) && !s.tracker.active_id() && (c==Category::ground || c==Category::grinds)) {
         s.ready.reset();s.rows.clear();s.legacy.reset();s.native_eligible=false;s.recovery_seen=false;
+        s.feedback.clear();
         s.tracker.begin_continuation();
         s.excluded.clear();s.boundary_logged=false;
     }
@@ -127,13 +131,14 @@ void sample(trick_logger::SetSample sample) {
 
     const bool bailed=sample.state==300 || sample.ragdoll || (s.wipeouts && sample.wipeouts>*s.wipeouts);
     s.wipeouts=sample.wipeouts;
-    if(bailed){fail(s);return;}
+    if(bailed){fail(s);s.feedback.basic="Bailed.";return;}
     const auto before=s.tracker.active_id();const auto segment_before=s.tracker.segment_id();auto finished=s.tracker.update(sample);
     const auto span=s.tracker.capture();
     if(span.closed && !s.boundary_logged){s.boundary_logged=true;s.diagnostics.push_back("Combination capture closed after phase "+std::to_string(span.last)+"; awaiting native landing/eligibility");}
     if(s.tracker.segment_id()!=segment_before)s.recovery_seen=false;
     if(sample.state==101 && (s.tracker.active_id() || s.ready))s.recovery_seen=true;
     if(!before && s.tracker.active_id()) {
+        s.feedback.clear();
         if(s.ready)s.diagnostics.push_back("Previous completed trick lacked native submission eligibility; new attempt started");
         s.diagnostics.push_back("Physical attempt started");
         s.rows.clear();s.ready.reset();s.legacy.reset();s.native_eligible=false;
@@ -149,8 +154,10 @@ void sample(trick_logger::SetSample sample) {
     }
     if(finished->landed!=true || !finished->rotation_complete){
         s.diagnostics.push_back(!finished->rotation_complete?"Completed attempt rejected: incomplete rotation evidence":"Attempt interrupted: "+finished->outcome);
+        s.feedback.invalid(!finished->rotation_complete?"Incomplete rotation evidence.":"Attempt tracking interrupted.");
         s.rows.clear();return;
     }
+    s.feedback.clear();
     auto result=Json::object();result["landed"]=true;result["rotation_complete"]=true;
     auto names=Json::array();for(auto& [id,row]:s.rows) {
         if(row.value("phase_provisional",false))associate_observation(row,s.tracker,nullptr,finished->end);
@@ -161,15 +168,16 @@ void sample(trick_logger::SetSample sample) {
         j["net_degrees"]=spin.accepted_net;j["goofy"]=spin.goofy?Json(*spin.goofy):Json{};j["grind_adjacent"]=spin.grind_adjacent;j["rotation_complete"]=spin.rotation_complete;j["recovery_travel"]=spin.recovery_travel;spins.push_back(j);
     }result["spins"]=spins;
     auto phases=Json::array();for(const auto& phase:finished->phases) {
-        auto p=Json::object();p["id"]=phase.id;p["kind"]=phase.kind;p["segment"]=phase.segment;p["begin"]=phase.begin;p["end"]=phase.end;phases.push_back(p);
+        auto p=Json::object();p["id"]=phase.id;p["kind"]=phase.kind;p["segment"]=phase.segment;p["begin"]=phase.begin;p["end"]=phase.end?phase.end:finished->end;phases.push_back(p);
     }result["movement_phases"]=phases;
     const auto normalized=normalize(result,s.rules);
-    result["canonical_phases"]=normalized.phases;result["ignored"]=normalized.ignored;
+    result["canonical_phases"]=normalized.phases;result["ignored"]=normalized.ignored;result["grind_holds"]=normalized.grind_holds;
     auto capture=Json::object();capture["first_phase"]=normalized.capture.first;capture["last_phase"]=normalized.capture.last;capture["closed"]=normalized.capture.closed;
     result["capture_boundary"]=capture;
     trick_logger::detector_evidence(std::move(result));s.rows.clear();
     if(normalized.violation!=Category::none){fail(s,normalized.violation);return;}
-    if(!normalized.signature.error.empty()){s.diagnostics.push_back("Completed attempt rejected: "+normalized.signature.error);return;}
+    if(!normalized.signature.error.empty()){s.feedback.invalid(invalid_reason(normalized.signature.error));s.feedback.ignored(normalized.ignored);s.diagnostics.push_back("Completed attempt rejected: "+normalized.signature.error);return;}
+    s.feedback.ignored(normalized.ignored);s.feedback.counted(normalized.grind_holds);
     DetectedAttempt attempt;attempt.id=++s.serial;attempt.landed=true;
     attempt.evidence["capture_boundary"]=capture;
     attempt.signature=normalized.signature.tokens;attempt.display=normalized.display;attempt.evidence["physical_attempt"]=finished->id;
@@ -259,9 +267,9 @@ bool judge_native(std::uint32_t player,bool setter,std::array<std::uint8_t,28>& 
     auto& s=state();std::lock_guard lock(s.mutex);if(!s.enabled)return false;
     const auto it=s.pending.find(player);if(it==s.pending.end()){landed=false;return true;}
     auto attempt=std::move(it->second);s.pending.erase(it);landed=attempt.landed;
-    if(!landed)return true;
+    if(!landed){if(s.own && s.feedback.basic!="Bailed.")s.feedback.invalid(attempt.violation==Category::none?"":forbidden(attempt.violation));return true;}
     if(setter) {
-        if(!s.history.insert(attempt.signature).second){landed=false;return true;}
+        if(!s.history.insert(attempt.signature).second){landed=false;if(s.own)s.feedback.basic="Trick already set.";return true;}
         s.target_evidence=attempt.evidence;s.target=std::move(attempt.signature);s.target_display=std::move(attempt.display);s.target_native=record;
     } else {
         landed=!s.target.empty() && s.target==attempt.signature;
@@ -272,10 +280,20 @@ bool judge_native(std::uint32_t player,bool setter,std::array<std::uint8_t,28>& 
         comparison["player"]=player;comparison["attempt_id"]=attempt.id;comparison["matched"]=landed;
         comparison["difference"]=trick_logger::match_difference({s.target,{}},{attempt.signature,{}});
         trick_logger::comparison(std::move(comparison));
+        if(s.own && !landed) {
+            s.feedback.basic="Trick does not match the target.";
+            if(s.target.size()!=attempt.signature.size())s.feedback.add("Different number of tricks or spin segments.");
+            else {
+                bool spin=false;for(std::size_t i=0;i<s.target.size();++i)
+                    if(s.target[i]!=attempt.signature[i] && (s.target[i].starts_with("spin:") || attempt.signature[i].starts_with("spin:")))spin=true;
+                s.feedback.add(spin?"Spin, direction or stance differs.":"Trick components differ.");
+            }
+        }
         if(landed)record=s.target_native;
         else s.diagnostics.push_back("Match failed: "+trick_logger::match_difference({s.target,{}},{attempt.signature,{}}));
     }
     return true;
 }
+std::vector<std::string> feedback_lines(bool detailed){auto& s=state();std::lock_guard lock(s.mutex);return s.enabled?s.feedback.lines(detailed):std::vector<std::string>{};}
 std::string target_text(){auto& s=state();std::lock_guard lock(s.mutex);return s.enabled?s.target_display:std::string{};}
 }

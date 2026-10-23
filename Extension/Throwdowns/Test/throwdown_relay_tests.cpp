@@ -628,7 +628,7 @@ void skate_leader_flow() {
 void configurable_host_flow() {
     const ThrowdownRelayInput in{me, {{other_peer,4}}, true, 95};tick(in);take_throwdown_relay_notices();
     ThrowdownLocalAction created{Local::created};created.series="ThrowdownSkate";
-    created.hosting_preferences.categories=5;created.hosting_preferences.numerical={130,60,720};
+    created.hosting_preferences.categories=5;created.hosting_preferences.numerical={130,60,720,750};
     throwdown_relay_local(created);tick(in);
     ThrowdownLocalAction exited{Local::exited};exited.series="ThrowdownSkate";exited.mmid=0x70;
     exited.placement={9};exited.settings={8};exited.rules_mask=0x6f;exited.rules_verified=true;
@@ -640,7 +640,7 @@ void configurable_host_flow() {
     join.rules_revision=skate::rules_format;join.rules_mask=0x65;
     receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
     check(count("add")==1,"Mismatched acknowledgement duplicated membership");take_throwdown_relay_notices();
-    join.numerical={130,60,720};receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
+    join.numerical={130,60,720,750};receive_throwdown_relay(other_peer,encode_throwdown(join));tick(in);
     check(count("add")==1,"Guest acknowledging complete frozen rules could not join");
     local(Local::force_started,0x70);out=tick(in);
     check(out.size()==2 && out[0].numerical==join.numerical && out[0].rules_mask==join.rules_mask,"Start lost host snapshot");
@@ -958,12 +958,12 @@ void skate_compatibility_flow() {
         ThrowdownLocalAction a{Local::exited};a.series="ThrowdownSkate";a.mmid=id;
         a.placement={9};a.settings={8};a.rules_mask=0x6f;a.rules_verified=true;
         throwdown_relay_local(a);const auto out=tick(in);
-        check(out.size()==2 && out[0].format==Format::vanilla && out[1].rules_revision==1,"Host did not advertise both formats");
+        check(out.size()==2 && out[0].format==Format::vanilla && out[1].rules_revision==skate::rules_format,"Host did not advertise both formats");
         return out[1];
     };
     const auto join=[&](unsigned id,auto sender,bool enhanced) {
         auto m=make(Kind::join,me,id);m.format=Format::vanilla;raw(sender,m);
-        if(enhanced){m.format=Format::msc;m.rules_revision=1;m.rules_mask=0x6f;raw(sender,m);raw(sender,m);}
+        if(enhanced){m.format=Format::msc;m.rules_revision=skate::rules_format;m.rules_mask=0x6f;raw(sender,m);raw(sender,m);}
         tick(in);
     };
     const auto start=[&](unsigned id,bool enhanced) {
@@ -984,18 +984,19 @@ void skate_compatibility_flow() {
         check(std::count_if(out.begin(),out.end(),[](const auto &m){return m.kind==Kind::start;})==1 &&
               skate::active()==enhanced,"Native-entered startup did not select the participant mode");
     }
-    for(unsigned scenario=0;scenario<9;++scenario) {
+    for(unsigned scenario=0;scenario<10;++scenario) {
         const unsigned id=0x101+scenario;
         host(id);join(id,leader,true);join(id,other_peer,false);
         bool enhanced=false;
         if(scenario==1){raw(other_peer,make(Kind::leave,me,id));tick(in);enhanced=true;}
-        if(scenario==2){auto ack=make(Kind::join,me,id);ack.rules_revision=1;ack.rules_mask=0xff;raw(other_peer,ack);tick(in);}
+        if(scenario==2){auto ack=make(Kind::join,me,id);ack.rules_revision=skate::rules_format;ack.rules_mask=0xff;raw(other_peer,ack);tick(in);}
         if(scenario==3){auto reduced=in;reduced.peers.pop_back();tick(reduced);enhanced=true;}
         if(scenario==4){raw(other_peer,make(Kind::leave,me,id));tick(in);join(id,other_peer,false);}
-        if(scenario==5){auto stale=make(Kind::join,me,id-1);stale.rules_revision=1;stale.rules_mask=0x6f;raw(other_peer,stale);tick(in);}
+        if(scenario==5){auto stale=make(Kind::join,me,id-1);stale.rules_revision=skate::rules_format;stale.rules_mask=0x6f;raw(other_peer,stale);tick(in);}
         if(scenario==6){auto reduced=in;reduced.peers.pop_back();tick(reduced);tick(in);join(id,other_peer,false);}
-        if(scenario==7){auto ack=make(Kind::join,me,id);ack.rules_revision=1;ack.rules_mask=0x6f;ack.numerical.spin_offset=60;raw(other_peer,ack);tick(in);}
-        if(scenario==8){auto ack=make(Kind::join,me,id);ack.rules_revision=1;ack.rules_mask=0x6f;auto bytes=encode_throwdown(ack);bytes[13]=2;receive_throwdown_relay(other_peer,bytes);tick(in);}
+        if(scenario==7){auto ack=make(Kind::join,me,id);ack.rules_revision=skate::rules_format;ack.rules_mask=0x6f;ack.numerical.spin_offset=60;raw(other_peer,ack);tick(in);}
+        if(scenario==8){auto ack=make(Kind::join,me,id);ack.rules_revision=skate::rules_format;ack.rules_mask=0x6f;auto bytes=encode_throwdown(ack);bytes[13]=255;receive_throwdown_relay(other_peer,bytes);tick(in);}
+        if(scenario==9){auto ack=make(Kind::join,me,id);ack.rules_revision=skate::rules_format;ack.rules_mask=0x6f;ack.numerical.grind_combo_ms=750;raw(other_peer,ack);tick(in);}
         start(id,enhanced);
         // Late acknowledgement and leave cannot renegotiate the frozen mode.
         join(id,other_peer,true);raw(other_peer,make(Kind::leave,me,id));check(tick(in).empty(),"Late traffic renegotiated mode");
@@ -1015,7 +1016,7 @@ void skate_compatibility_flow() {
     for(bool advertised_enhanced:{false,true}) {
         end_session();tick(in);auto offered=offer(leader,0x120,"ThrowdownSkate");
         offered.format=Format::vanilla;offered.rules_mask=0;raw(leader,offered);tick(in);
-        if(advertised_enhanced){offered.format=Format::msc;offered.rules_mask=0x6f;offered.rules_revision=1;raw(leader,offered);tick(in);}
+        if(advertised_enhanced){offered.format=Format::msc;offered.rules_mask=0x6f;offered.rules_revision=skate::rules_format;raw(leader,offered);tick(in);}
         check(count("spawn")==1,"Dual offers made duplicate flags");
         throwdown_relay_spawned(last_token,0x820,4);tick(in);local(Local::joined,0x820);auto out=tick(in);
         check(out.size()==(advertised_enhanced?2:1) && out[0].format==Format::vanilla,"Guest did not send vanilla join first");
@@ -1028,7 +1029,7 @@ void skate_compatibility_flow() {
         check(count("landed")==0,"Early attempt replayed before local event entry");
         ThrowdownLocalAction entered{Local::entered};entered.participants={0x303,2};throwdown_relay_local(entered);tick(in);
         check(!skate::active(),"Vanilla match activated detector");
-        auto wrong=begun;wrong.format=Format::msc;wrong.rules_revision=1;wrong.rules_mask=0x6f;wrong.settings={4};raw(leader,wrong);tick(in);
+        auto wrong=begun;wrong.format=Format::msc;wrong.rules_revision=skate::rules_format;wrong.rules_mask=0x6f;wrong.settings={4};raw(leader,wrong);tick(in);
         check(!skate::active(),"Late enhanced start changed vanilla mode");
         ThrowdownLocalAction turn{Local::turn_started};turn.player=2;throwdown_relay_local(turn);tick(in);
         ThrowdownLocalAction mine{Local::attempt};mine.player=2;mine.add=true;mine.trick[0]=42;throwdown_relay_local(mine);out=tick(in);
@@ -1041,10 +1042,10 @@ void skate_compatibility_flow() {
         local(Local::ended);tick(in);check(!skate::active(),"Ended vanilla game retained detector");
     }
     // Cleanup close is safe even if the local native start is still pending.
-    end_session();tick(in);auto offered=offer(leader,0x130,"ThrowdownSkate");offered.rules_revision=1;raw(leader,offered);tick(in);
+    end_session();tick(in);auto offered=offer(leader,0x130,"ThrowdownSkate");offered.rules_revision=skate::rules_format;raw(leader,offered);tick(in);
     throwdown_relay_spawned(last_token,0x830,4);tick(in);local(Local::joined,0x830);tick(in);
     auto legacy=offered;legacy.format=Format::vanilla;legacy.rules_revision=legacy.rules_mask=0;raw(leader,legacy);tick(in);
-    auto begun=make(Kind::start,leader,0x130);begun.order={leader,me};begun.rules_revision=1;begun.rules_mask=0x6f;begun.settings={4};
+    auto begun=make(Kind::start,leader,0x130);begun.order={leader,me};begun.rules_revision=skate::rules_format;begun.rules_mask=0x6f;begun.settings={4};
     calls.clear();start_ready=false;raw(leader,begun);raw(leader,make(Kind::close,leader,0x130));tick(in);
     check(count("start")==0 && count("destroy")==0,"Spectator cleanup destroyed pending enhanced copy");
     start_ready=true;tick(in);
@@ -1060,11 +1061,11 @@ void msc_startup_race_flow() {
     const auto raw=[](auto sender,const auto &m){receive_throwdown_relay(sender,encode_throwdown(m));};
     const auto prepare=[&](unsigned id) {
         end_session();tick(in);take_throwdown_relay_notices();
-        auto offered=offer(leader,id,"ThrowdownSkate");offered.rules_revision=1;
+        auto offered=offer(leader,id,"ThrowdownSkate");offered.rules_revision=skate::rules_format;
         raw(leader,offered);tick(in);throwdown_relay_spawned(last_token,0x860,4);tick(in);
         local(Local::joined,0x860);tick(in);calls.clear();
         auto start=make(Kind::start,leader,id);start.order={leader,me};
-        start.rules_revision=1;start.rules_mask=0x6f;start.settings={4};return start;
+        start.rules_revision=skate::rules_format;start.rules_mask=0x6f;start.settings={4};return start;
     };
     ThrowdownLocalAction entered{Local::entered};entered.participants={0x303,2};
     const auto turn=[&](Local kind,unsigned player) {
@@ -1099,7 +1100,7 @@ void msc_startup_race_flow() {
         // Neither duplicate packet nor native entry may restart the detector or turn counters.
         raw(leader,start);throwdown_relay_local(entered);tick(in);
         ollie();const auto out=tick(in);
-        check(out.size()==1 && out[0].kind==Kind::attempt && out[0].rules_revision==1 &&
+        check(out.size()==1 && out[0].kind==Kind::attempt && out[0].rules_revision==skate::rules_format &&
               out[0].value==(ordering==2?2:1) && !out[0].detected.empty(),"Recovered MSC attempt or turn number was lost/reset");
         auto attempt=out[0];attempt.value=ordering==3?2:1;
         turn(Local::turn_started,0x303);tick(in);calls.clear();raw(leader,attempt);tick(in);

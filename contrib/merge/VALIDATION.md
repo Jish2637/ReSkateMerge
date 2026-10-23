@@ -162,3 +162,9 @@ Patch for object dropper.
 ## Version 0.1.9
 
 Sync updates for items.
+
+## Version 0.1.10
+
+Enhanced rules revision 2 adds a 500 ms default dwell requirement for additional grind identities; first grind remains exempt. New automated coverage includes timing boundaries, identity re-entry, duplicate/reordered observations, frozen acknowledgements, preference migration and detailed feedback persistence/lifecycle. Historical timing-free signature fixtures explicitly disable dwell; separate timestamped and live-detector API fixtures exercise it. Vanilla wire fixtures and native paths remain covered. No boneless/no-comply changes.
+
+The local full Release suite passed 113 tests with one installed-game-data check skipped. The updater regression was run with its required production update flag; the local test launcher disabled binary updates intentionally. Production release builds restore normal updates. Live multiplayer acceptance and deployed-server verification remain outstanding. Older server activity/statistics decoding may not recognize revision 2, although server forwarding is independent of this optional decoding.

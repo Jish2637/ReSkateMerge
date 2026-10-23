@@ -18,7 +18,7 @@ trick_logger::SetSample sample(unsigned state,std::uint64_t now,double yaw=0) {
 }
 }
 void phase_regressions() {
-    const Rules all{0xff,true};const auto flip=row("ID_TRICK_KICKFLIP","Kickflip");const auto ollie=row("ID_TRICK_OLLIE","Ollie");
+    const Rules all{0xff,true,{115,90,450,0}};const auto flip=row("ID_TRICK_KICKFLIP","Kickflip");const auto ollie=row("ID_TRICK_OLLIE","Ollie");
     const auto bone=row("ID_TRICK_BONEDOLLIE","Boned Ollie");auto manual=row("ID_TRICK_MANUAL","Manual",4);
     const auto base=normalize(attempt({flip}),all);
     require(normalize(attempt({bone}),all).signature.tokens==normalize(attempt({ollie}),all).signature.tokens,"Boned/pop equivalence lost");

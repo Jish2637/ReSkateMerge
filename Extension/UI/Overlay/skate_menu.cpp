@@ -1,3 +1,4 @@
+#include <cstdio>
 #include "numeric_edit.h"
 #include "overlay_internal.h"
 #include "Engine/Core/Platform/launcher_support.h"
@@ -1005,6 +1006,14 @@ void skate_rules_page(SkateMenu& menu) {
     changed|=number("grind-minimum","Grind-adjacent minimum","Minimum absolute net spin next to a grind. Smaller turns are classified as zero. Degrees; inclusive boundary.",draft.numerical.grind_minimum,0,180,115);
     changed|=number("spin-offset","Spin rounding offset","Added to absolute net spin before rounding down in 180-degree steps. Higher values accept the next spin sooner.",draft.numerical.spin_offset,0,179,90);
     changed|=number("recovery-limit","Grounded recovery limit","Cumulative grounded recovery travel in degrees. Reaching this limit rejects excessive grounded rotation; this is travel, not net heading.",draft.numerical.recovery_limit,180,1080,450);
+    field(menu,"Additional grind minimum duration","First grind counts normally. Later grind identities must be held continuously for this duration; zero disables the minimum.");
+    int duration_steps=draft.numerical.grind_combo_ms/50;
+    if(slider_int("grind-combo-duration",&duration_steps,0,60,"%d x 0.05 seconds")){draft.numerical.grind_combo_ms=duration_steps*50;changed=true;}
+    {char text[64];std::snprintf(text,sizeof(text),"Current minimum: %.2f seconds",draft.numerical.grind_combo_ms/1000.0);note(text);}
+    if(button_row(menu,"grind-duration-reset",{{"Reset duration",draft.numerical.grind_combo_ms!=500}})==0){draft.numerical.grind_combo_ms=500;changed=true;}
+    bool detailed=skate::feedback_preferences().get();
+    if(toggle_row(menu,"Detailed trick feedback","Local display only. Show concise reasons and omitted grind durations; basic failure feedback remains visible.",detailed))
+        feedback(menu,skate::feedback_preferences().set(detailed)?"Feedback preference saved.":"Could not save feedback preference.");
     note("Defaults: 115 / 90 / 450 degrees. Slider limits are conservative configuration bounds, not validated balance recommendations.");
     if(primary_button(menu,"Reset to current defaults")){draft={};changed=true;}
     if(changed)feedback(menu,skate::host_preferences().set(draft)?"Hosting preferences saved.":"Could not save hosting preferences.");

@@ -36,4 +36,5 @@ void prepare_native(std::uint32_t player,DetectedAttempt attempt);
 bool native_pending(std::uint32_t player);
 bool judge_native(std::uint32_t player,bool setter,std::array<std::uint8_t,28>& record,bool& landed);
 std::string target_text();
+std::vector<std::string> feedback_lines(bool detailed);
 }

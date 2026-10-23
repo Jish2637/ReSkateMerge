@@ -2,6 +2,7 @@
 #include "throwdown_relay.h"
 #include "skate_trick_rule.h"
 #include "Extension/Skater/skate_detector.h"
+#include "Extension/Skater/skate_host_preferences.h"
 #include "Engine/Core/Log/logging.h"
 #include "Engine/Game/Build/addresses.h"
 #include "Engine/Game/Build/20260929/native_throwdowns.h"
@@ -313,6 +314,13 @@ void skate_debug_text_ran(Address base, Address vm) noexcept {
             }
             s.hud.done_tricks = s.done;
             explain_repeat(s.hud);
+            const auto feedback=skate::feedback_lines(skate::feedback_preferences().get());
+            std::vector<overlay::SkateHudMessage> feedback_messages;
+            for(const auto& text:feedback)
+                feedback_messages.push_back({text.starts_with("Invalid trick") || text=="Bailed." || text=="Trick does not match the target."?overlay::SkateHudMessage::Kind::failure:overlay::SkateHudMessage::Kind::prompt,text});
+            // The overlay draws six lines. Keep prompt/target first, then the
+            // failure reason, so native status messages cannot hide basic feedback.
+            s.hud.messages.insert(s.hud.messages.begin()+std::min(std::size_t{2},s.hud.messages.size()),feedback_messages.begin(),feedback_messages.end());
             s.shown_at = std::chrono::steady_clock::now();
             if (s.patched.contains(resource)) s.letters.store(s.letters_drawing, std::memory_order_release);
             s.letters_drawing = 0;

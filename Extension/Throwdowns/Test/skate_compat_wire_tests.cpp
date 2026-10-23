@@ -46,13 +46,13 @@ int main() try {
         check(decode_throwdown(encoded)==m,"MSC layout changed");
         // An MSC message can have a valid vanilla prefix. All incomplete nonempty
         // extension suffixes must fail, including a truncated rules snapshot.
-        for(unsigned cut=1;cut<8;++cut) {
+        for(unsigned cut=1;cut<10;++cut) {
             auto truncated=encoded;truncated.resize(truncated.size()-cut);
             const auto decoded=decode_throwdown(truncated);
             check(!decoded || decoded->rules_revision==0,"Partial rules snapshot accepted");
         }
         auto junk=encoded;junk.push_back(0);check(!decode_throwdown(junk),"MSC trailing data accepted");
-        auto revision=encoded;revision[revision.size()-8]=255;check(!decode_throwdown(revision),"Unsupported revision accepted");
+        auto revision=encoded;revision[revision.size()-10]=255;check(!decode_throwdown(revision),"Unsupported revision accepted");
     }
     check(!decode_throwdown(std::vector<std::uint8_t>(4097,0)),"Oversized packet accepted");
     auto oversized=attempt;oversized.format=Format::msc;oversized.detected.resize(3501);
@@ -72,14 +72,14 @@ int main() try {
             stats.throwdown(sender,*decoded,1'000'000,86400,settings,{});
         };
         auto advertised=offer;advertised.format=format;
-        if(format==Format::msc){advertised.rules_revision=1;advertised.rules_mask=0x6f;}
+        if(format==Format::msc){advertised.rules_revision=dingosdk::skate::rules_format;advertised.rules_mask=0x6f;}
         send(host,offer);send(host,advertised);send(guest,join);send(guest,join);
         auto running=start;running.format=format;
-        if(format==Format::msc){running.settings={8};running.rules_revision=1;running.rules_mask=0x6f;}
+        if(format==Format::msc){running.settings={8};running.rules_revision=dingosdk::skate::rules_format;running.rules_mask=0x6f;}
         send(host,running);auto close=message(Kind::close);send(host,close);
         check(activity.playing()==std::set<std::uint64_t>{host,guest},"Cleanup close ended server activity");
         auto result=attempt;result.format=format;
-        if(format==Format::msc){result.rules_revision=1;result.rules_mask=0x6f;result.detected={1};}
+        if(format==Format::msc){result.rules_revision=dingosdk::skate::rules_format;result.rules_mask=0x6f;result.detected={1};}
         send(guest,result);
         check(lines.size()==4 && lines.back().find("landed")!=std::string::npos,"Server did not log start/attempt once");
         send(guest,result);

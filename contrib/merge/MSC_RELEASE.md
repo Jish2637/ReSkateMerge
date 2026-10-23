@@ -1,3 +1,24 @@
+# ReSkateMerge MSC v0.1.10
+
+## MSC S.K.A.T.E. grind combinations and feedback
+
+- Additional grind identities now require a continuous hold before joining a combination. The first grind counts normally; the default minimum for later grinds is 0.50 seconds.
+- Adds an Insert-menu duration control (0-3 seconds, 0.05-second steps); zero disables the minimum. Hosting preferences are saved and frozen for each match.
+- Adds basic invalid-trick feedback, including excessive grounded rotation, plus an optional local Detailed trick feedback setting for concise reasons and counted/omitted grind timings.
+- Vanilla S.K.A.T.E. behavior is unchanged. No boneless or no-comply changes are included.
+
+### Compatibility
+
+Client-only update; MSC server 2.1.4 remains unchanged. All participants need the updated client to use the new enhanced rules revision. Older MSC or vanilla participants use the existing native vanilla fallback.
+
+Existing servers forward gameplay traffic independently of optional rules decoding. The older server activity/statistics decoder may not recognize the new enhanced rules, so statistics/activity coverage is separate from gameplay compatibility.
+
+Update through the custom launcher or download the Windows x64 ZIP. Requires your own Steam copy of skate.
+
+### Validation
+
+Local Release regression suite: 113 passed, zero failed, one skipped (trainer tuning-name validation requires installed game data). Coverage includes 499/500/501 ms boundaries, identity re-entry, duplicate/reordered observations, configurable and frozen rules, feedback persistence/lifecycle, vanilla codec fixtures and shared server relay/activity tests. Live multiplayer gameplay and verification against an already deployed server binary remain outstanding; compilation and isolated tests are not proof of interoperability.
+
 # ReSkateMerge MSC v0.1.9
 
 Sync updates for items.

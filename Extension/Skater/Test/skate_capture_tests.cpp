@@ -30,7 +30,31 @@ struct Run {
 };
 }
 void capture_regressions() {
-    const Rules all{0xff,true},flat{0xf9,true},grabs{0xfb,true};
+    for(unsigned duration:{499U,500U,501U}) {
+        Run r({15,true});r.step(403);
+        r.observe_row(row("ID_TRICK_TAILSLIDE",1,0,1));r.step(403);
+        r.observe_row(row("ID_TRICK_NOSESLIDE",1,0,2));
+        unsigned remaining=duration-16;
+        while(remaining){const auto delta=std::min(remaining,100U);r.s.now+=delta;++r.s.steps;skate::sample(r.s);remaining-=delta;}
+        const auto done=r.complete();
+        check(done && done->landed,"Timed gameplay grind attempt failed");
+        const auto omitted=done->evidence.at("ignored_counts").value("grind duration",0U);
+        check(omitted==(duration<500?1U:0U),"Gameplay grind duration differs from normalization");
+        check(skate::feedback_lines(false).empty(),"Short grind produced basic failure feedback");
+        check(!skate::feedback_lines(true).empty() && skate::feedback_lines(true).back().find(duration<500?"omitted":"counted")!=std::string::npos,"Gameplay grind measurement feedback missing");
+    }
+    {
+        Run r({15,true});r.step(201);r.observe_row(row("ID_UNKNOWN_TRICK",1,1,1));
+        check(!r.complete(),"Unrecognized attempt unexpectedly judged");
+        check(!feedback_lines(false).empty() && feedback_lines(false).front().starts_with("Invalid trick"),"Unrecognized completed attempt has no basic feedback");
+        r.step(201);check(feedback_lines(true).empty(),"New physical attempt retained stale feedback");
+    }
+    {
+        Run r({15,true});r.step(201);r.observe_row(row("ID_TRICK_KICKFLIP",1,1,1));r.step(101);
+        for(unsigned i=1;i<=30;++i)r.step(101,std::remainder(i*15.,360.));
+        check(!feedback_lines(false).empty() && feedback_lines(false).front().find("Excessive grounded rotation")!=std::string::npos,"Grounded rotation violation absent from basic feedback");
+    }
+    const Rules all{0xff,true,{115,90,450,0}},flat{0xf9,true},grabs{0xfb,true};
     for(const auto direction:{"ID_FLIPDIRECTION_FRONTFLIP","ID_FLIPDIRECTION_BACKFLIP"}) {
         Run r({1,true});r.step(201);
         auto carrier=row("ID_TRICK_TAILGRAB",1,1,1);carrier["raw_labels"]["body_flip_direction"]=direction;

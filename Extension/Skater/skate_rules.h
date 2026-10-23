@@ -10,7 +10,7 @@
 namespace dingosdk::skate {
 // Detector computation revision for logs and replay reports. Multiplayer compatibility
 // is checked separately through rules_format and the complete frozen rules snapshot.
-inline constexpr std::uint16_t rules_version=14;
+inline constexpr std::uint16_t rules_version=15;
 enum class Category : std::uint8_t { none, flips, grabs, grinds, ground, manuals, grounded_rotation, unknown };
 struct Rules {
     std::uint8_t values{};
@@ -161,7 +161,7 @@ struct Normalized {
     trick_logger::MatchSignature signature;
     std::string display;
     Category violation{Category::none};
-    Json phases{Json::array()},ignored{Json::array()};
+    Json phases{Json::array()},ignored{Json::array()},grind_holds{Json::array()};
     trick_logger::CaptureSpan capture;
 };
 inline Normalized normalize(Json result,Rules rules) {
@@ -210,6 +210,7 @@ inline Normalized normalize(Json result,Rules rules) {
         groups.back().rows.push_back(row);
     }
     std::stable_sort(groups.begin(),groups.end(),[](const auto& a,const auto& b){return a.id<b.id;});
+    bool first_grind=true;
     std::string preceding_trick,preceding_kind,preceding_direction;int preceding_spin{};
     for(auto& group:groups) {
         // A somersault describes the airborne phase, rather than the particular
@@ -236,6 +237,47 @@ inline Normalized normalize(Json result,Rules rules) {
         for(const auto& row:group.rows)substantive|=!foundational_pop(trick_names::matching_labels(row).value("base_name",""));
         std::set<std::pair<std::uint64_t,std::string>> observations;std::set<std::string> pops;
         std::set<std::string> body_flips;
+        // Timestamped grind runs, bounded by their physical phase. Duplicate
+        // observations cannot invent time, and a return after another identity
+        // is a new run. Keep the first grind regardless of its duration.
+        if(group.kind=="grind") {
+            std::vector<Json> retained;
+            std::set<std::uint64_t> seen;
+            const trick_logger::MovementPhase* physical{};
+            for(const auto& p:movement)if(p.id==group.id && p.kind=="grind"){physical=&p;break;}
+            std::vector<Json> unique;
+            for(const auto& r:group.rows) {
+                const auto obs=r.value("observation_id",std::uint64_t{});
+                if(obs && !seen.insert(obs).second)continue;
+                unique.push_back(r);
+            }
+            const auto identity=[](const Json& r){
+                const auto& raw=trick_names::matching_labels(r);auto key=Json::object();
+                for(const auto field:{"base_name","stance","nollie","direction","held_rotation","late","dark_catch","dark_flip","underflip"})key[field]=raw.value(field,"");
+                return key.dump();
+            };
+            for(std::size_t i=0;i<unique.size();) {
+                std::size_t next=i+1;
+                while(next<unique.size() && identity(unique[next])==identity(unique[i]))++next;
+                std::uint64_t duration{};
+                if(physical && physical->end && physical->end>=physical->begin && unique[i].contains("first_seen_ms")) {
+                    const auto begin=std::clamp(unique[i].value("first_seen_ms",physical->begin),physical->begin,physical->end);
+                    const auto end=next<unique.size()?std::clamp(unique[next].value("first_seen_ms",begin),begin,physical->end):physical->end;
+                    duration=end-begin;
+                }
+                const bool keep=first_grind || !rules.numerical.grind_combo_ms || duration>=static_cast<unsigned>(rules.numerical.grind_combo_ms);
+                if(!first_grind)out.grind_holds.push_back(Json{{"duration_ms",duration},{"minimum_ms",rules.numerical.grind_combo_ms},{"qualified",keep}});
+                first_grind=false;
+                if(keep)retained.push_back(unique[i]);
+                else {
+                    auto ignored=Json::object();ignored["observation_id"]=unique[i].value("observation_id",std::uint64_t{});
+                    ignored["reason"]="grind duration";ignored["duration_ms"]=duration;ignored["minimum_ms"]=rules.numerical.grind_combo_ms;
+                    out.ignored.push_back(ignored);
+                }
+                i=next;
+            }
+            group.rows=std::move(retained);
+        }
         std::string previous_identity;bool collapsed{};
         for(const auto& row:group.rows) {
             const auto& raw=trick_names::matching_labels(row);auto id=canonical_pop(raw.value("base_name",""));

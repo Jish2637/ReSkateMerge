@@ -27,7 +27,7 @@ int main(int argc,char** argv)try {
     configurable_rules_regressions();
     capture_regressions();
     const auto flip=row("ID_TRICK_KICKFLIP","Kickflip"),bone=row("ID_TRICK_BONEDOLLIE","Boned Ollie"),grind=row("ID_TRICK_TAILSLIDE","Tailslide"),grab=row("ID_TRICK_NOSEGRAB","Nosegrab"),manual=row("ID_TRICK_MANUAL","Manual");
-    const Rules all{0xff,true};
+    const Rules all{0xff,true,{115,90,450,0}};
     check(argc>=2 && argc<=6,"Expected native ticker and optional rejected-defense fixture");
     if(argc>=3)audit_rejections(argv[2],argc>=4?argv[3]:nullptr);
     if(argc>=5)audit_ignored_turns(argv[4]);

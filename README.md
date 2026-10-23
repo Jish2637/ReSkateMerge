@@ -4,11 +4,11 @@ Combined Windows x64 client: **skate-trick-detection-fixes â†’ jish-fpm-nat
 Terminology test27**, based on ReSkate 2.1.0. Source and releases are maintained
 in the public [ReSkateMerge repository](https://github.com/Jish2637/ReSkateMerge).
 
-The MSC launcher identifies itself as **MSC Launcher v0.1.9**. Sync updates for items. MSC server **2.1.4** remains unchanged.
+The MSC launcher identifies itself as **MSC Launcher v0.1.10**. Adds configurable additional-grind timing and optional detailed MSC S.K.A.T.E. feedback. Enhanced matches require updated participants; older clients use vanilla fallback. MSC server **2.1.4** remains unchanged.
 
 ## Use the combined client
 
-1. Download `ReSkateMerge-v0.1.9-Windows-x64.zip` from this repository's
+1. Download `ReSkateMerge-v0.1.10-Windows-x64.zip` from this repository's
    release and extract it into a new folder of its own, outside Steam's
    skate. install. You need your own Steam copy of skate.
 2. Run `ReSkateLauncher.exe` and let it prepare the supported game build. For an
