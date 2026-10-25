@@ -84,6 +84,7 @@ int main(int argc,char** argv) {try {
         check(asset.starts_with("asset:"),"Server manifest must name a staged release asset");
         selected["assets"].push_back(Json{{"name",asset.substr(6)},{"browser_download_url","https://github.com/Jish2637/ReSkateMerge/releases/download/v"+client+"/"+asset.substr(6)}});
         responses[std::wstring(repo)+L"/releases/latest"]=selected.dump();
+        responses[std::wstring(repo)+L"/releases?per_page=10"]=Json::array({selected}).dump();
         const auto relative="v"+client+"/launcher.json";
         responses[std::wstring(prefix)+std::wstring(relative.begin(),relative.end())]=manifest.dump();
         update::set_test_get(get);const auto config=update::fetch_config();
