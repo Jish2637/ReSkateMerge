@@ -2,6 +2,7 @@
 // See contrib/trick-terminology/README.md; project GPL-3.0 notices apply.
 #include "trick_terminology.h"
 #include "Extension/UI/hud_corner.h"
+#include "Extension/Settings/local_gameplay_settings.h"
 #include "trick_binding_probe.h"
 #include "terminology_diagnostics.h"
 #include "Extension/Progression/local_entitlement_trigger_runtime.h"
@@ -233,6 +234,8 @@ void install_publication(Address base) {
         "Terminology native publication hook: shared internal writer {}, unlock {}",publisher,unlocker);
 }
 void sample_spin(State& s, std::uint64_t now) {
+    if (const auto footing=profile_runtime::game_stance_goofy())
+        natural_goofy.store(*footing?1:0);
     if (!s.listener_attempted) {
         s.listener_attempted=true;s.listener_ready=add_no_bail_step_listener(&rotation_physics_step);
         logging::log(logging::Level::info,logging::Channel::runtime,"Terminology native rotation step listener {}",s.listener_ready);
@@ -349,7 +352,7 @@ void drain_binding_probe(std::uint64_t now) {
         logging::write(logging::Level::info,logging::Channel::runtime,j.dump());
         }
     }
-    if(diagnostics::enabled && announced && now>=stats) {
+    if constexpr (diagnostics::enabled) if(announced && now>=stats) {
         stats=now+5000;auto j=Json::object();j["kind"]="terminology_binding_probe_stats";
         j["prewrite_calls"]=prewrite_calls.load();j["prewrite_routes"]=prewrite_routes.load();
         j["prewrite_fields"]=prewrite_fields.load();j["prewrite_inputs"]=prewrite_inputs.load();j["prewrite_matches"]=prewrite_matches.load();j["prewrite_cached"]=prewrite_cached.load();j["prewrite_discovered"]=prewrite_discovered.load();
@@ -554,7 +557,7 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
                     }
                 }
                 const auto signature=diagnostics::enabled ? Json(n.labels).dump()+observation.direction+std::to_string(observation.early_degrees)+(observation.spin_valid?"valid":"invalid")+std::to_string(observation.measured_spin) : std::string{};
-                if (diagnostics::enabled && enabled && s.recorded<4096 && s.observations[n.model.handle]!=signature) {
+                if constexpr (diagnostics::enabled) if (enabled && s.recorded<4096 && s.observations[n.model.handle]!=signature) {
                     s.observations[n.model.handle]=signature;++s.recorded;
                     if constexpr (diagnostics::enabled) {
                     auto j=Json::object();j["kind"]="terminology_observation";j["model_handle"]=n.model.handle;
@@ -647,13 +650,15 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
             }
         }
         static unsigned row_events{};
+        static std::string row_status;
         std::map<std::uint64_t,std::string> active_combo_rules;
         if(enabled)for(const auto& rule:combos)if(rule.enabled)active_combo_rules.emplace(rule.id,editor::encode(rule).dump());
         // Structural history edits only at the ordinary client tick, after the
         // native scoring writer/unlock scripts have completed. Text interception
         // remains early; it must never insert/remove stack items recursively.
-        if(!in_unlock && !incoming_text && !profile_runtime::executing_expression)for(const auto& event:row_presenter().service(c,combo_requests,active_combo_rules))if(row_events++<128 || event.action=="inserted") {
-            if constexpr (diagnostics::enabled) {
+        if(!in_unlock && !incoming_text && !profile_runtime::executing_expression)for(const auto& event:row_presenter().service(c,combo_requests,active_combo_rules)) {
+            row_status=event.action+": "+event.message;
+            if constexpr (diagnostics::enabled) if(row_events++<128 || event.action=="inserted") {
             auto j=Json::object();j["kind"]="terminology_combo_row";j["action"]=event.action;j["message"]=event.message;
             j["source_handle"]=event.source;j["parent_handle"]=event.parent;j["custom_handle"]=event.row;j["rule_id"]=event.rule;
             j["ui_only"]=true;j["score_value"]=0;
@@ -667,6 +672,9 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
             enabled?(boundary_ready?"Editor / native UI boundary":"Editor / polling fallback"):"Off",rules.size(),matched,conflicts,failures);
         if(!combo_requests.empty() && profile_runtime::executing_expression)s.status+="; structural writes deferred until native script completes";
         s.status+="; "+std::to_string(combo_requests.size())+" native row requests; "+std::to_string(frame.size())+" retained actions";
+        s.status+=s.measurement_valid?"; rotation tracking ready":"; waiting for valid rotation tracking";
+        s.status+=natural_goofy.load()<0?"; natural stance unknown":"; natural stance known";
+        if(!row_status.empty())s.status+="; last row: "+row_status;
         editor::observe(frame,s.status,boundary_events.load());return s.status;
     } catch (const std::exception& e) {
         if (s.error_records++<8) logging::write(logging::Level::warning,logging::Channel::runtime,e.what());
