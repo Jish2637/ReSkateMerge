@@ -152,6 +152,10 @@ void terminology_editor_button(SkateMenu& menu,const CallbacksV3&) {
 }
 void terminology_editor_page(SkateMenu& menu,const CallbacksV3& callbacks) {
     auto& p=page();const auto current=ed::view();const auto& view=*current;
+    if (button_row(menu,"trick-editor-back",{{"BACK TO MAP & HUD"}})==0) {p.open=false;return;}
+    bool terminology_enabled=view.terminology_enabled;
+    if (toggle_row(menu,"Skate trick terminology","Apply the active rules to the native trick ticker.",terminology_enabled))
+        send_console(menu,callbacks,std::string("trainer option terminology ")+(terminology_enabled?"1":"0"));
     begin_card(menu,"terminology-detection","GLOBAL TRICK DETECTION");
     bool early=view.detection.early_spin;
     if (toggle_row(menu,"Early Spin Recognition","Predict the next spin increment after Skate acknowledges a spin. Applies to every spin combo.",early))

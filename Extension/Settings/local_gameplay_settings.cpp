@@ -130,6 +130,9 @@ void note_stance(const void* reference, bool value) noexcept {
                                    "Player stance: read from the game's \"{}\" setting.", key);
         } catch (...) { return; }
     }
+    // Every effective path (saved, forced, native read and applied write) comes
+    // here. Terminology must receive the same footing even on early returns.
+    trick_terminology::observe_footing(value);
     if (stance_value.exchange(value ? 1 : 0, std::memory_order_relaxed) != (value ? 1 : 0))
         dingosdk::logging::log(dingosdk::logging::Level::info, dingosdk::logging::Channel::settings,
                                "Player stance: {}.", value ? "goofy" : "regular");
