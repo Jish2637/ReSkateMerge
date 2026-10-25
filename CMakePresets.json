@@ -12,7 +12,7 @@
       },
       "toolset": "v145",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "0.1.10",
+        "DINGOSDK_VERSION": "0.1.11",
         "DINGOSDK_LAUNCHER_AUTO_UPDATE": "ON",
         "DINGOSDK_RELEASE_REPO": "Jish2637/ReSkateMerge",
         "DINGOSDK_BUILD_TESTS": "OFF",
@@ -23,7 +23,9 @@
         "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "ON",
         "DINGOSDK_BUILD_TRAINER_TESTS": "ON",
         "DINGOSDK_BUILD_STEEZY_LANDINGS_TESTS": "ON",
-        "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": "ON"
+        "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": "ON",
+        "DINGOSDK_MOD_ID": "MSC",
+        "DINGOSDK_MOD_VERSION": "0.1.11"
       }
     },
     {
@@ -49,10 +51,10 @@
     {
       "name": "vs2026-server-release",
       "inherits": "vs2026-x64",
-      "displayName": "MSC server 2.1.4 Windows x64",
+      "displayName": "MSC server 2.1.5 Windows x64",
       "binaryDir": "${sourceDir}/build/vs2026-server-release",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "2.1.4",
+        "DINGOSDK_VERSION": "2.1.5",
         "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "OFF",
         "DINGOSDK_BUILD_TRICK_LOGGER_TESTS": "OFF",
         "DINGOSDK_BUILD_FIRST_PERSON_HOST_TESTS": "OFF",
@@ -61,6 +63,33 @@
         "DINGOSDK_BUILD_TRAINER_TESTS": "OFF",
         "DINGOSDK_BUILD_STEEZY_LANDINGS_TESTS": "OFF",
         "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "msc-protocol55-local",
+      "displayName": "MSC client: upstream 2.1.2 plus protocol 55, local validation",
+      "inherits": "vs2026-x64",
+      "binaryDir": "${sourceDir}/build/protocol55-local",
+      "cacheVariables": {
+        "DINGOSDK_VERSION": "2.1.2",
+        "DINGOSDK_MOD_ID": "MSC",
+        "DINGOSDK_MOD_VERSION": "0.1.10",
+        "DINGOSDK_LAUNCHER_AUTO_UPDATE": "OFF",
+        "DINGOSDK_BUILD_PLUGIN_TESTS": "ON",
+        "DINGOSDK_BUILD_TRAINER_TESTS": "OFF",
+        "DINGOSDK_BUILD_STEEZY_LANDINGS_TESTS": null,
+        "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": null
+      }
+    },
+    {
+      "name": "msc-protocol55-release",
+      "inherits": "msc-protocol55-local",
+      "displayName": "MSC client 0.1.11 public update",
+      "binaryDir": "${sourceDir}/build/protocol55-local",
+      "cacheVariables": {
+        "DINGOSDK_VERSION": "0.1.11",
+        "DINGOSDK_MOD_VERSION": "0.1.11",
+        "DINGOSDK_LAUNCHER_AUTO_UPDATE": "ON"
       }
     }
   ],
@@ -85,6 +114,24 @@
       "configuration": "Release",
       "targets": [
         "dingosdk_server"
+      ]
+    },
+    {
+      "name": "msc-protocol55-local",
+      "configurePreset": "msc-protocol55-local",
+      "configuration": "Release",
+      "targets": [
+        "dingosdk_launcher",
+        "dingosdk_runtime"
+      ]
+    },
+    {
+      "name": "msc-protocol55-release",
+      "configurePreset": "msc-protocol55-release",
+      "configuration": "Release",
+      "targets": [
+        "dingosdk_launcher",
+        "dingosdk_runtime"
       ]
     }
   ]

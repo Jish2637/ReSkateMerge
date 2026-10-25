@@ -118,7 +118,7 @@ Json Host::msc_staff(Guest& g) {
     auto name=config_.name;cut_text(name,128);settings["name"]=name;auto current_map=map_name();cut_text(current_map,128);settings["map"]=current_map;
     settings["placement"]=std::string(object_placement_name(config_.object_placement));number("rate",config_.send_rate);
     flag("listed",config_.listed);flag("voice",config_.voice_chat);number("voice-range",config_.voice_range);number("objects",config_.object_limit);
-    flag("object-scaling",config_.object_scaling);flag("effects",config_.sync_effects);flag("drones",config_.sync_drones);flag("noclip",config_.noclip);flag("nobail",config_.no_bail);flag("boosts",config_.boosts);flag("tuning",config_.enforce_tuning);flag("layer-sync",config_.world_layer_sync);
+    flag("object-scaling",config_.object_scaling);flag("effects",config_.sync_effects);flag("noclip",config_.noclip);flag("nobail",config_.no_bail);flag("boosts",config_.boosts);flag("tuning",config_.enforce_tuning);flag("layer-sync",config_.world_layer_sync);
     flag("activity-log",config_.activity_log);flag("announce-throwdowns",config_.announce_throwdowns);flag("parties",config_.parties);number("party-size",config_.party_size);number("afk-kick",config_.afk_kick);number("kick-time",config_.kick_minutes);
     number("crowd",config_.crowd_budget);number("bone-scale",config_.bone_scale_limit);number("bone-reach",config_.bone_reach_limit);
     number("rotation",config_.map_rotation);flag("rotation.vote",config_.rotation_vote);number("rotation.stay",config_.rotation_extend);flag("rotation.announce",config_.rotation_announce);

@@ -1,7 +1,7 @@
 // Native ticker reader adapted from the supplied ReSkate tricklog.12 reference.
 // See contrib/trick-terminology/README.md; project GPL-3.0 notices apply.
 #include "trick_terminology.h"
-#include "Extension/HallOfMeat/hall_of_meat_hud.h"
+#include "Extension/UI/hud_corner.h"
 #include "trick_binding_probe.h"
 #include "terminology_diagnostics.h"
 #include "Extension/Progression/local_entitlement_trigger_runtime.h"
@@ -225,8 +225,8 @@ bool install_checked(Address base,const Contract& contract,Function replacement,
 void install_publication(Address base) {
     if (boundary_checked) return;
     boundary_checked=true;hooked_base.store(base);
-    // Hall of Meat already owns this exact native detour. Share its dispatch.
-    const bool publisher=hall_of_meat::share_model_write(true);
+    // Upstream owns this native detour for plugin HUDs and the trick feed.
+    const bool publisher=hud_corner::set_model_writer(&publish_native_model);
     const bool unlocker=install_checked(base,addr::profile::model_unlock_contract,&unlock_models,original_unlock);
     boundary_ready=publisher && unlocker;
     logging::log(logging::Level::info,logging::Channel::runtime,
@@ -404,7 +404,7 @@ std::string tick(std::uintptr_t base,bool playing,bool enabled) noexcept {
     try {
         if (playing && enabled) install_publication(base);
         if(!in_unlock && boundary_checked) {
-            const bool shared=hall_of_meat::share_model_write(playing && enabled);
+            const bool shared=hud_corner::set_model_writer(playing && enabled ? &publish_native_model : nullptr);
             boundary_ready=playing && enabled && shared && original_unlock.load()!=nullptr;
         }
         if (!playing || !enabled) {confirmed_combos.clear();confirmed_singles.clear();s.spins.reset();s.phases=trick_logger::TrickSetTracker{true,true,true};s.history.clear();s.sets.clear();s.measurement_valid=false;s.phase_sequence=0;s.invalid_sequences.clear();s.wipeouts_known=false;s.associations.clear();s.baseline=true;}

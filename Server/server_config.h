@@ -89,27 +89,28 @@ inline constexpr unsigned max_spawned_parks = 16;
 // ReSkateServer.json. Every setting an admin or the console changes is saved
 // back, so a restart keeps it.
 inline constexpr unsigned dedicated_tps = 20;
+// The tools the server can take away from single players (lock, throwdown_locks): noclip with
+// teleporting, No Bail, the boosts, their own physics tuning, and placing objects. "all" is the
+// first four, as throwdown_locks has always read it: objects are only ever locked by name.
+inline constexpr std::uint8_t lock_noclip = 1, lock_nobail = 2, lock_boosts = 4, lock_tuning = 8, lock_objects = 16, lock_ollies = 32;
+inline constexpr std::uint8_t lock_movement = lock_noclip | lock_nobail | lock_boosts | lock_ollies; // what the role's "movement" gives
+inline constexpr std::uint8_t lock_all = lock_movement | lock_tuning;
 struct VoiceMute {
     std::uint64_t id{};
     std::string name;
-    std::int64_t added{}, expires{}; // UTC seconds; zero expiry means permanent
+    std::int64_t added{}, expires{};
     bool active(std::int64_t now) const { return !expires || now < expires; }
 };
-// The tools the server can take away from single players (lock, throwdown_locks): noclip with
-// teleporting, No Bail, the boosts, and their own physics tuning.
-inline constexpr std::uint8_t lock_noclip = 1, lock_nobail = 2, lock_boosts = 4, lock_tuning = 8;
-inline constexpr std::uint8_t lock_movement = lock_noclip | lock_nobail | lock_boosts; // what the role's "movement" gives
-inline constexpr std::uint8_t lock_all = lock_movement | lock_tuning;
 struct ServerConfig {
     StatsSettings player_stats;
     ShopSettings shop;
     WagerSettings wagers;
+    std::string default_map;
     std::filesystem::path file;
     std::string name = "ReSkate server";
     // The map everyone skates, named like the game's `load` command: "San Vansterdam",
     // "Isle of Grom", or a custom map in Mods\ such as "bbcity".
     std::string map = "San Vansterdam";
-    std::string default_map; // empty: off; selected once each empty period, including startup
     std::vector<std::string> map_pool; // maps for votes and the rotation, in order; empty: every map
     unsigned map_rotation = 0;         // minutes per map before the next pool map (0: off)
     // When the rotation's time is up, players vote for the next map: three of the pool's, any
@@ -124,6 +125,12 @@ struct ServerConfig {
     // version (server_map_update.h), looked up at start and every so many minutes.
     bool latest_versions = false;
     unsigned latest_check_minutes = 60;
+    // Thunderstore packages every player must have to join ("plugins.required"): "Owner-Name",
+    // or "Owner-Name-1.2.3" for at least that version. A player without them is offered them on
+    // the card that offers a missing map, and fetches only what Thunderstore lists as a plugin
+    // and what runs Luau code. The server checks each on Thunderstore as it starts and leaves
+    // out one that is not a plugin there (RequiredPluginCheck, server_map_update.h).
+    std::vector<std::string> required_plugins;
     unsigned max_players = 16; // players; the server itself is not one
     // The most poses a second one player is sent (crowd_limits); 0: no limit.
     unsigned crowd_budget = crowd_pose_budget;
@@ -223,9 +230,6 @@ struct ServerConfig {
     // and the trails and fire of costumes and skateboards. Off: nothing of them is relayed and
     // players' games show each other without them.
     bool sync_effects = true;
-    // Players see each other's FPV drones (the marker where a player's drone is). Off: none are
-    // relayed, and players' games neither send theirs nor show anyone's.
-    bool sync_drones = true;
     // Whether players may use noclip (and teleport) / No Bail / the boosts (admins always may).
     bool noclip = true, no_bail = true, boosts = true;
     // Players skate with the game's own physics tuning, not copies they edited.
