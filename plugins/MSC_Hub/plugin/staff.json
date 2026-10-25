@@ -1,0 +1,1967 @@
+[
+  {
+    "id": "status",
+    "group": "Overview",
+    "label": "Server status",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "players",
+    "group": "Overview",
+    "label": "Player list",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "net",
+    "group": "Overview",
+    "label": "Network report",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "kick",
+    "group": "Players",
+    "label": "Kick player",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Duration (minutes or restart)",
+        "type": "text",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "ban",
+    "group": "Players",
+    "label": "Ban player",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Saved name",
+        "type": "text",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "unban",
+    "group": "Players",
+    "label": "Unban Steam ID",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Steam ID",
+        "type": "identity",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "bans",
+    "group": "Players",
+    "label": "Ban list",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "lock",
+    "group": "Players",
+    "label": "Lock player tools",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Tools",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "all",
+          "noclip",
+          "nobail",
+          "boosts",
+          "tuning"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unlock",
+    "group": "Players",
+    "label": "Unlock player tools",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Steam ID",
+        "type": "identity",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Tools",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "all",
+          "noclip",
+          "nobail",
+          "boosts",
+          "tuning"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "locks",
+    "group": "Players",
+    "label": "List tool locks",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "cleartag",
+    "group": "Players",
+    "label": "Disable active purchased tag",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "viptest",
+    "group": "Players",
+    "label": "Prepare VIP milestone test",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "mute",
+    "group": "Voice and chat",
+    "label": "Mute voice",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Minutes (blank = permanent)",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "unmute",
+    "group": "Voice and chat",
+    "label": "Unmute voice",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Steam ID",
+        "type": "identity",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "mutes",
+    "group": "Voice and chat",
+    "label": "Voice mute list",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Page",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "timeout",
+    "group": "Voice and chat",
+    "label": "Timeout text chat",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Minutes",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "untimeout",
+    "group": "Voice and chat",
+    "label": "Remove text timeout",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Steam ID",
+        "type": "identity",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "timeouts",
+    "group": "Voice and chat",
+    "label": "Text timeout list",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Page",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "msg",
+    "group": "Voice and chat",
+    "label": "Private message",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Message",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "msg-party",
+    "group": "Voice and chat",
+    "label": "Message player party",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Message",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "msg-admins",
+    "group": "Voice and chat",
+    "label": "Message staff",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Message",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "announce",
+    "group": "Voice and chat",
+    "label": "Global announcement",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Message",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "announce-to",
+    "group": "Voice and chat",
+    "label": "Private announcement",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Message",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "announcements.list",
+    "group": "Voice and chat",
+    "label": "Scheduled announcements",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "announcements.add",
+    "group": "Voice and chat",
+    "label": "Add scheduled announcement",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Message",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "announcements.remove",
+    "group": "Voice and chat",
+    "label": "Remove scheduled announcement",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Index",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "announcements.clear",
+    "group": "Voice and chat",
+    "label": "Clear scheduled announcements",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "announcements.interval",
+    "group": "Voice and chat",
+    "label": "Announcement interval",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Minutes",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "announcements.off",
+    "group": "Voice and chat",
+    "label": "Disable scheduled announcements",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "roles",
+    "group": "Roles",
+    "label": "List roles",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "roles.reload",
+    "group": "Roles",
+    "label": "Reload roles file",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "role",
+    "group": "Roles",
+    "label": "Assign role",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Role",
+        "type": "role",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "reserved",
+    "group": "Roles",
+    "label": "Reserved slots",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "reserved.slots",
+    "group": "Roles",
+    "label": "Set reserved slot count",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Count",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "reserved.add",
+    "group": "Roles",
+    "label": "Reserve slot for player",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Steam ID",
+        "type": "identity",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "reserved.remove",
+    "group": "Roles",
+    "label": "Remove reserved player",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Steam ID",
+        "type": "identity",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "tphere",
+    "group": "Teleport",
+    "label": "Bring player here",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "tpall",
+    "group": "Teleport",
+    "label": "Bring all players",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Destination player (blank = you)",
+        "type": "player",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "teleport.player",
+    "group": "Teleport",
+    "label": "Teleport to player",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Destination",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "teleport.point",
+    "group": "Teleport",
+    "label": "Teleport to coordinates",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "X Y Z (Y is up)",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "build.list",
+    "group": "Saved builds",
+    "label": "List saved builds",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Page",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "build.save",
+    "group": "Saved builds",
+    "label": "Save shared build",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Build name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "build.replace",
+    "group": "Saved builds",
+    "label": "Preview build overwrite",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Build name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Mode",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "replace"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "build.load",
+    "group": "Saved builds",
+    "label": "Load saved build",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Build name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "build.unload",
+    "group": "Saved builds",
+    "label": "Preview build unload",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Build name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "build.remove",
+    "group": "Saved builds",
+    "label": "Preview build deletion",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Build name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "build.confirm",
+    "group": "Saved builds",
+    "label": "Confirm pending build action",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "build.cancel",
+    "group": "Saved builds",
+    "label": "Cancel pending build action",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "whoplaced",
+    "group": "Objects",
+    "label": "Object placement history",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Minutes",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      },
+      {
+        "label": "Page",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "nearobj",
+    "group": "Objects",
+    "label": "Find nearby objects",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Name filter",
+        "type": "text",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "nearobj.page",
+    "group": "Objects",
+    "label": "Nearby results page",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Page",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "delobj.player",
+    "group": "Objects",
+    "label": "Delete player objects",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "delobj.index",
+    "group": "Objects",
+    "label": "Delete nearby listed object",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Listed object number",
+        "type": "object",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "clear-objects",
+    "group": "Objects",
+    "label": "Clear all placed objects",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "vote-cancel",
+    "group": "Votes",
+    "label": "Cancel running vote",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "vote.map",
+    "group": "Votes",
+    "label": "Start map vote",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Map",
+        "type": "map",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "vote.kick",
+    "group": "Votes",
+    "label": "Start kick vote",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Player",
+        "type": "player",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "vote.tod",
+    "group": "Votes",
+    "label": "Start time-of-day vote",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Time",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "default",
+          "morning",
+          "noon",
+          "afternoon",
+          "evening",
+          "night",
+          "weatherday",
+          "weathernight"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "vote.extend",
+    "group": "Votes",
+    "label": "Start extension vote",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Minutes",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "vote.custom",
+    "group": "Votes",
+    "label": "Start custom vote",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Vote name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Choice",
+        "type": "text",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "vote.yes",
+    "group": "Votes",
+    "label": "Vote yes",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "vote.no",
+    "group": "Votes",
+    "label": "Vote no",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "vote.list",
+    "group": "Votes",
+    "label": "List custom votes",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "poll",
+    "group": "Votes",
+    "label": "Start poll",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Question then answers separated by vertical bars",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "poll.end",
+    "group": "Votes",
+    "label": "End poll",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "votes",
+    "group": "Votes",
+    "label": "Vote configuration",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "votes.toggle",
+    "group": "Votes",
+    "label": "Enable or disable vote",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Vote",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "map",
+          "kick",
+          "tod",
+          "extend"
+        ]
+      },
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "votes.percent",
+    "group": "Votes",
+    "label": "Vote threshold percentage",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Vote",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "map",
+          "kick",
+          "tod",
+          "extend"
+        ]
+      },
+      {
+        "label": "Percent",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "votes.timer",
+    "group": "Votes",
+    "label": "Vote timing or minimum players",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Vote",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "map",
+          "kick",
+          "tod",
+          "extend"
+        ]
+      },
+      {
+        "label": "Setting",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "seconds",
+          "cooldown",
+          "min-players"
+        ]
+      },
+      {
+        "label": "Value",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "votes.polls",
+    "group": "Votes",
+    "label": "Who may start polls",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Policy",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "off",
+          "admins",
+          "everyone"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "votes.poll-seconds",
+    "group": "Votes",
+    "label": "Poll duration",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Seconds",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "votes.starter-yes",
+    "group": "Votes",
+    "label": "Starter votes yes automatically",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "map",
+    "group": "Maps and world",
+    "label": "Change current map",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Map",
+        "type": "map",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "maps",
+    "group": "Maps and world",
+    "label": "Map catalogue",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "maps.reload",
+    "group": "Maps and world",
+    "label": "Reload map catalogue",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "map-pool",
+    "group": "Maps and world",
+    "label": "Map pool",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "map-pool.add",
+    "group": "Maps and world",
+    "label": "Add map to pool",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Map",
+        "type": "map",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "map-pool.remove",
+    "group": "Maps and world",
+    "label": "Remove map from pool",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Map",
+        "type": "map",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "map-pool.clear",
+    "group": "Maps and world",
+    "label": "Clear map pool",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "rotation",
+    "group": "Maps and world",
+    "label": "Rotation configuration",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "rotation.set",
+    "group": "Maps and world",
+    "label": "Set rotation interval",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Minutes or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "rotation.vote",
+    "group": "Maps and world",
+    "label": "Rotation voting",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rotation.stay",
+    "group": "Maps and world",
+    "label": "Rotation extension allowance",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Minutes or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "rotation.announce",
+    "group": "Maps and world",
+    "label": "Rotation announcements",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rotation.extend",
+    "group": "Maps and world",
+    "label": "Extend current map timer",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Minutes",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "park",
+    "group": "Maps and world",
+    "label": "Set park layout",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Lot",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Layout",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "park.random",
+    "group": "Maps and world",
+    "label": "Random park layouts",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "layer-sync",
+    "group": "Maps and world",
+    "label": "World layer synchronization",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "layers",
+    "group": "Maps and world",
+    "label": "World layer catalogue",
+    "read_only": true,
+    "fields": [
+      {
+        "label": "Filter",
+        "type": "text",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "layer",
+    "group": "Maps and world",
+    "label": "Set world layer",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Layer key",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "default",
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "tod",
+    "group": "Maps and world",
+    "label": "Set time of day",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Time",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "default",
+          "morning",
+          "noon",
+          "afternoon",
+          "evening",
+          "night",
+          "weatherday",
+          "weathernight"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "park-mod.list",
+    "group": "Park mods",
+    "label": "List park mods",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "park-mod.add",
+    "group": "Park mods",
+    "label": "Spawn park mod",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Minutes",
+        "type": "number",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "park-mod.remove",
+    "group": "Park mods",
+    "label": "Remove park mod",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "park-mod.clear",
+    "group": "Park mods",
+    "label": "Remove all spawned parks",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "park-mod.reload",
+    "group": "Park mods",
+    "label": "Reload park mod",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "park-mod.config.add",
+    "group": "Park mods",
+    "label": "Register park mod",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Name then folder then map then optional key separated by vertical bars",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "park-mod.config.remove",
+    "group": "Park mods",
+    "label": "Unregister park mod",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Name",
+        "type": "name",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "name",
+    "group": "Server settings",
+    "label": "Server name",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Name",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "password",
+    "group": "Server settings",
+    "label": "Server password",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "New password or off",
+        "type": "secret",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "welcome",
+    "group": "Server settings",
+    "label": "Welcome message",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Message or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "listed",
+    "group": "Server settings",
+    "label": "Public server listing",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "chat-color",
+    "group": "Server settings",
+    "label": "Server chat colours",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Badge colour (#RRGGBB)",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Text colour (#RRGGBB)",
+        "type": "text",
+        "optional": true,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "kick-time",
+    "group": "Server settings",
+    "label": "Default kick duration",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Minutes or restart",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "activity-log",
+    "group": "Server settings",
+    "label": "Activity logging",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "announce-throwdowns",
+    "group": "Server settings",
+    "label": "Throwdown announcements",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "parties",
+    "group": "Server settings",
+    "label": "Player parties",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "party-size",
+    "group": "Server settings",
+    "label": "Maximum party size",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Players",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "afk-kick",
+    "group": "Server settings",
+    "label": "Idle kick timer",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Minutes or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "words.reload",
+    "group": "Server settings",
+    "label": "Reload word lists",
+    "read_only": false,
+    "fields": []
+  },
+  {
+    "id": "words.global",
+    "group": "Server settings",
+    "label": "Global word filtering",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "voice",
+    "group": "Gameplay settings",
+    "label": "Voice chat",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "voice-range",
+    "group": "Gameplay settings",
+    "label": "Voice distance",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Metres",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "distances",
+    "group": "Gameplay settings",
+    "label": "Player update distances",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Full",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Half",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Half return",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      },
+      {
+        "label": "Low",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "crowd",
+    "group": "Gameplay settings",
+    "label": "Crowd update budget",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Count or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "rate",
+    "group": "Gameplay settings",
+    "label": "Server send rate",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "KB per second",
+        "type": "number",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "bone-scale",
+    "group": "Gameplay settings",
+    "label": "Bone scale limit",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Multiplier or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "bone-reach",
+    "group": "Gameplay settings",
+    "label": "Bone reach limit",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Metres or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "placement",
+    "group": "Gameplay settings",
+    "label": "Who may build",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Policy",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "everyone",
+          "admins",
+          "nobody"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "objects",
+    "group": "Gameplay settings",
+    "label": "Object limit",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Count or off",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "object-scaling",
+    "group": "Gameplay settings",
+    "label": "Object scaling",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "effects",
+    "group": "Gameplay settings",
+    "label": "Skater effects",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "drones",
+    "group": "Gameplay settings",
+    "label": "FPV drone synchronization",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "noclip",
+    "group": "Gameplay settings",
+    "label": "Guest noclip",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "nobail",
+    "group": "Gameplay settings",
+    "label": "Guest No Bail",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "boosts",
+    "group": "Gameplay settings",
+    "label": "Guest boosts",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "tuning",
+    "group": "Gameplay settings",
+    "label": "Enforce stock physics",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "State",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "throwdown-locks",
+    "group": "Gameplay settings",
+    "label": "Tools locked during throwdowns",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Tools",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "off",
+          "all",
+          "noclip",
+          "nobail",
+          "boosts",
+          "tuning"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "speed-check",
+    "group": "Anti-cheat",
+    "label": "Speed checks",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Policy",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "off",
+          "warn",
+          "kick"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "board-check",
+    "group": "Anti-cheat",
+    "label": "Board checks",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Policy",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "off",
+          "warn",
+          "kick"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "score-check",
+    "group": "Anti-cheat",
+    "label": "Scoring checks",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Policy",
+        "type": "choice",
+        "optional": false,
+        "choices": [
+          "off",
+          "warn",
+          "kick"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "score-allow.list",
+    "group": "Anti-cheat",
+    "label": "Allowed scoring fingerprints",
+    "read_only": true,
+    "fields": []
+  },
+  {
+    "id": "score-allow.add",
+    "group": "Anti-cheat",
+    "label": "Allow scoring fingerprint",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Fingerprint",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  },
+  {
+    "id": "score-allow.remove",
+    "group": "Anti-cheat",
+    "label": "Remove scoring fingerprint",
+    "read_only": false,
+    "fields": [
+      {
+        "label": "Fingerprint",
+        "type": "text",
+        "optional": false,
+        "choices": []
+      }
+    ]
+  }
+]

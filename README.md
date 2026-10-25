@@ -1,5 +1,11 @@
 # ReSkate
 
+## MSC Hub for standard ReSkate
+
+The [MSC Hub plugin on Thunderstore](https://thunderstore.io/c/reskate/p/MSC_Midnight_Skate_Club/MSC_Hub/) brings the MSC shop, profile, collection, points transfers, leaderboards and activities to the standard ReSkate client. Open **Insert > Plugins > MSC HUB** after joining a Hub-enabled MSC server. See the [player guide](plugins/MSC_Hub/README.md) for features and installation.
+
+Server **2.1.6** adds the standard plugin message bridge while retaining the custom client's existing MSC Hub. [Server update and rollback instructions](contrib/merge/MSC_HUB_SERVER_RELEASE.md) include the published Thunderstore package ID. The MSC client remains **0.1.11** for this server-only update.
+
 play it offline, host your own lobbies and dedicated servers, and mod it.
 the launcher, the runtime that loads into the game, and the dedicated server.
 

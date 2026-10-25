@@ -4,6 +4,10 @@
 //
 //   dingosdk_server_park_tests <Server/Test/fixtures/park_mods>
 #include "Server/server_host.h"
+#include "Server/player_stats.h"
+#include "Engine/Game/Multiplayer/msc_interface.h"
+#include "Extension/Plugins/plugin_wire.h"
+#include <ctime>
 #include "Engine/Game/World/world_names.h"
 #include "Server/server_parks.h"
 #include "Extension/Multiplayer/Net/pose_batch.h"
@@ -112,6 +116,8 @@ struct Game {
     std::optional<Member> server;
     ObjectState park; // the server's objects as this game holds them
     std::vector<std::string> chat;
+    std::vector<Json> msc_messages;
+    std::vector<std::string> plugin_frames;
     std::vector<std::string> votes; // the roster's: the votes of the server's own that are on
     bool refused{}; // an object update the game would not have taken
     bool joined{};
@@ -166,6 +172,11 @@ struct Game {
                 for (const auto &v : p->server_custom_votes) votes.push_back(v.name);
             }
             if (p->kind == PacketKind::chat) chat.push_back(p->text);
+            if (p->kind == PacketKind::msc)msc_messages.push_back(Json::parse(p->text));
+            if (p->kind == PacketKind::throwdown) {
+                const auto message=plugins::wire::decode(p->throwdown);
+                if(message && message->authority && message->to==id)plugin_frames.push_back(message->payload);
+            }
             if (p->kind == PacketKind::objects) {
                 if (!server || p->source != server->id || !routed_source(*p, *server, server->id, false, server->id) ||
                     park.receive(p->objects) == ObjectState::Result::invalid)
@@ -174,6 +185,10 @@ struct Game {
         }
     }
 };
+
+#include "msc_interface_host_cases.inc"
+#include "msc_features_host_cases.inc"
+#include "msc_plugin_host_cases.inc"
 
 int run(const std::filesystem::path &fixtures) {
     // ---- Reading park mods -------------------------------------------------------------------
@@ -525,7 +540,7 @@ int run(const std::filesystem::path &fixtures) {
         const auto said = [&](std::string_view text) {
             return std::count_if(a.chat.begin(), a.chat.end(), [&](const std::string &line) { return line.find(text) != std::string::npos; });
         };
-        const auto logged = [&](std::string_view text) {
+        const auto poll_logged = [&](std::string_view text) {
             return std::count_if(log.begin(), log.end(), [&](const std::string &line) { return line.find(text) != std::string::npos; });
         };
         auto &c = games.at(76561198000000003ULL);
@@ -538,14 +553,14 @@ int run(const std::filesystem::path &fixtures) {
         check(said("You already answered no.") == 1, "A second answer in the same poll was not answered as one");
         command("poll end");
         run_for(1000000);
-        check(logged("Poll \"First?\" ended: yes 0, no 2 (no wins).") == 1, "A poll counted an answer given twice twice");
+        check(poll_logged("Poll \"First?\" ended: yes 0, no 2 (no wins).") == 1, "A poll counted an answer given twice twice");
         check(!said("First?"), "A poll's question or result was repeated in chat");
         command("poll Second? | yes | no");
         a.say("/2", now);
         run_for(1000000);
         command("poll end");
         run_for(1000000);
-        check(logged("Poll \"Second?\" ended: yes 0, no 1 (no wins).") == 1, "The same answer in the next poll was turned away");
+        check(poll_logged("Poll \"Second?\" ended: yes 0, no 1 (no wins).") == 1, "The same answer in the next poll was turned away");
         c.say("hello again", now);
         run_for(1000000);
         c.say("hello again", now);
@@ -650,7 +665,10 @@ int main(int argc, char **argv) {
         return 2;
     }
     try {
-        const auto result = run(argv[1]);
+        if(std::string_view(argv[1])=="--msc-only") {
+            run_msc_interface_host();run_msc_features_host();run_msc_plugin_host();
+        } else run(argv[1]);
+        const auto result=failures;
         if (!result) std::printf("server park tests passed\n");
         return result ? 1 : 0;
     } catch (const std::exception &e) {

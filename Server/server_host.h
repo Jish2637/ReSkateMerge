@@ -180,6 +180,7 @@ class Host {
     Json msc_snapshot(Guest &);
     void msc_send(Guest &, std::uint64_t request=0, std::string message={});
     void msc_request(Guest &, std::string_view);
+    bool msc_plugin_receive(Guest &, const std::vector<std::uint8_t>&);
     void tick_msc();
     Json msc_games(Guest &);
     Json msc_staff(Guest &);
@@ -253,7 +254,13 @@ class Host {
         bool objects_observed{};
         ObjectSpamWindow object_spam_window;
         bool msc_fp{}, shop_login_done{}, shop_tag_hidden{};
-        bool msc_ui{}, msc_capture{}, msc_leader_active{}, msc_slots_ui{};
+        bool msc_ui{}, msc_native_ui{}, msc_capture{}, msc_leader_active{}, msc_slots_ui{};
+        // Standard-client Hub transport. These are connection-local, never persisted.
+        std::string msc_plugin_nonce, msc_plugin_token;
+        std::vector<std::vector<std::uint8_t>> msc_plugin_outbox;
+        std::uint64_t msc_plugin_second{};
+        std::size_t msc_plugin_bytes{};
+        ChatBudget msc_plugin_budget;
         std::string msc_message,msc_last_state,msc_quote_key,msc_quote_token,msc_leader_kind="weekly";
         std::uint64_t msc_revision{},msc_highest{},msc_until{},msc_tick{},msc_collection_page=1,msc_leader_page=1,msc_slot_next{};
         ChatBudget msc_reads,msc_mutations;

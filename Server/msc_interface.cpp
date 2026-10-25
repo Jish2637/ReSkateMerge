@@ -5,9 +5,46 @@
 #include "shop.h"
 #include "Engine/Game/Multiplayer/msc_interface.h"
 #include "Engine/Core/Text/word_filter.h"
+#include "Extension/Plugins/plugin_wire.h"
 #include <ctime>
 
 namespace dingosdk::server {
+bool Host::msc_plugin_receive(Guest& g,const std::vector<std::uint8_t>& bytes) {
+    namespace wire=plugins::wire;
+    const auto decoded=wire::decode(bytes);
+    if(!decoded || decoded->channel!=wire::channel_of("MSC_Hub"))return false;
+    // Consume this reserved channel even on invalid destinations; no wallet data
+    // or authority claims from guests may be relayed to another player.
+    if(decoded->authority || decoded->to!=wire::authority || !g.handshaken ||
+       decoded->payload.size()>4082 || !g.msc_plugin_budget.accept(now_,4))return true;
+    try {
+        auto envelope=Json::parse(decoded->payload,{4082,16,1024});
+        if(msc::integer(envelope,"v")!=1)return true;
+        const auto nonce=msc::text(envelope,"nonce",64);
+        if(nonce.empty() || nonce.find_first_not_of("0123456789-")!=std::string::npos)return true;
+        const auto op=msc::text(envelope,"op",16);
+        if(op=="hello") {
+            if(nonce!=g.msc_plugin_nonce) {
+                g.msc_plugin_nonce=nonce;g.msc_plugin_token=std::to_string(++msc_quote_serial_);
+                g.msc_plugin_outbox.clear();g.msc_staff_token.clear();shop_quotes_.erase(g.member.id);
+            }
+            // Repeated hellos do not invalidate deduplication or reset serials.
+            g.msc_ui=true;g.msc_slots_ui=true;g.msc_until=now_+30000000;
+            if(g.msc_plugin_outbox.empty())msc_send(g);
+        } else if(op=="request" && nonce==g.msc_plugin_nonce &&
+                  msc::text(envelope,"token",64)==g.msc_plugin_token &&
+                  !g.msc_plugin_token.empty() && g.msc_plugin_outbox.empty()) {
+            // Use the real guest, not any player identity supplied in the body.
+            auto body=envelope.at("body");
+            // Luau's empty table is encoded as {}, whereas zero-field staff
+            // forms require an empty positional list in the existing handler.
+            if(body.contains("args") && body.at("args").is_object() && body.at("args").empty())body["args"]=Json::array();
+            msc_request(g,body.dump());
+        }
+    } catch(const std::exception&) { /* Invalid plugin input cannot reach an MSC action. */ }
+    return true;
+}
+
 Json Host::msc_snapshot(Guest& g) {
     auto out=Json::object();
     out["v"]=msc::version;out["epoch"]=std::to_string(g.member.epoch);out["player"]=std::to_string(g.member.id);
@@ -116,14 +153,35 @@ void Host::msc_send(Guest& g,std::uint64_t request,std::string message) {
             data["message"]="MSC display data exceeds the packet limit. Use existing chat commands for this view.";p.text=data.dump();
         }
     }
-    if(p.text.size()<=msc::max_payload)send_packet(g,p,true,false);
+    if(p.text.size()<=msc::max_payload) {
+        // Original custom-client transport remains byte-for-byte compatible.
+        // A plugin-only guest must not receive the custom packet kind.
+        if(g.msc_plugin_nonce.empty() || g.msc_native_ui)send_packet(g,p,true,false);
+        if(!g.msc_plugin_nonce.empty() && g.msc_plugin_outbox.empty()) {
+            data["bridge"]=1U;data["next_request"]=g.msc_highest;
+            const auto text=data.dump();
+            if(text.size()>18000)return;
+            const auto count=(text.size()+2999)/3000;
+            for(std::size_t i=0;i<count;++i) {
+                const auto part="MSC1|"+g.msc_plugin_nonce+"|"+g.msc_plugin_token+"|"+
+                    std::to_string(g.msc_revision)+"|"+std::to_string(i+1)+"|"+std::to_string(count)+"|"+text.substr(i*3000,3000);
+                g.msc_plugin_outbox.push_back(plugins::wire::encode(plugins::wire::channel_of("MSC_Hub"),g.member.id,part,true));
+            }
+        }
+    }
 }
 void Host::tick_msc() {
     for(auto& [id,ptr]:guests_) {
         (void)id;auto& g=*ptr;
+        // Bound outgoing traffic below the official plugin's 16 KiB/s budget.
+        if(now_/1000000!=g.msc_plugin_second){g.msc_plugin_second=now_/1000000;g.msc_plugin_bytes=0;}
+        while(!g.msc_plugin_outbox.empty() && g.msc_plugin_bytes+g.msc_plugin_outbox.front().size()<=12000) {
+            auto bytes=std::move(g.msc_plugin_outbox.front());g.msc_plugin_outbox.erase(g.msc_plugin_outbox.begin());
+            g.msc_plugin_bytes+=bytes.size();send_plugin_message(g.member.id,bytes);
+        }
         if(!g.msc_ui || !g.handshaken || now_>=g.msc_until || now_<g.msc_tick)continue;
         g.msc_tick=now_+1000000;
-        if(msc_snapshot(g).dump()!=g.msc_last_state)msc_send(g);
+        if(g.msc_plugin_outbox.empty() && msc_snapshot(g).dump()!=g.msc_last_state)msc_send(g);
     }
 }
 void Host::msc_request(Guest& g,std::string_view payload) {

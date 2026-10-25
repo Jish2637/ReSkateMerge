@@ -1,0 +1,7 @@
+{
+  "name": "MSC_Hub",
+  "version_number": "0.1.2",
+  "website_url": "https://github.com/Jish2637/ReSkateMerge",
+  "description": "MSC Hub for standard ReSkate: shop, profile, activities and staff tools. Requires an MSC server with the Hub plugin bridge.",
+  "dependencies": []
+}

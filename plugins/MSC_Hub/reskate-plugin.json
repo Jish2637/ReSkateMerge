@@ -1,0 +1,6 @@
+{
+  "api": 1,
+  "entry": "plugin/main.luau",
+  "side": "client",
+  "permissions": ["menu", "overlay", "session.read", "net.session", "ui.screen", "throwdowns"]
+}

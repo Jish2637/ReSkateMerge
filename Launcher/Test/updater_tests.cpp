@@ -62,6 +62,35 @@ int main(int argc,char** argv) {try {
     check(dingosdk::launcher_gui::runtime_branding("0.1.4",true)=="ReSkate MSC v0.1.4" &&
           dingosdk::launcher_gui::runtime_branding("",true)=="ReSkate MSC" &&
           dingosdk::launcher_gui::runtime_branding("",false)=="ReSkate MSC development build","Runtime status lost MSC identity");
+    if(argc==4 && std::string_view(argv[1])=="--server-live") {
+        // Verify the production updater against the published server in an
+        // isolated fixture. Never touch a running server or its real data.
+        const fs::path folder=argv[3];fs::create_directories(folder);
+        const auto config=update::fetch_config();check(config.has_value(),"Public update discovery failed");
+        check(config->server.version==argv[2],"Expected published server version");
+        check(config->tag=="v"+config->runtime.version && config->runtime.version=="0.1.11","Server update changed client release identity");
+        const auto archive=update::download_verified(folder/"server-update.zip",config->server);
+        check(update::archive_entry_sha256(archive,"ReSkateServer.exe")==config->server_exe_sha256,"Published executable does not match manifest");
+        write(folder/"ReSkateServer.json","preserved server settings");write(folder/"data/player-stats.json","preserved wallet data");
+        update::install_archive(archive,folder);
+        check(dingosdk::launcher::sha256_file(folder/"ReSkateServer.exe")==config->server_exe_sha256,"Public archive installation hash mismatch");
+        check(read(folder/"ReSkateServer.json")=="preserved server settings" && read(folder/"data/player-stats.json")=="preserved wallet data","Public update replaced live-data fixtures");
+        const auto again=update::fetch_config();check(again && again->server_exe_sha256==config->server_exe_sha256,"Second update check would not be current");
+        std::cout<<"Published server discovery, verified download, installation and second check passed\n";return 0;
+    }
+    if(argc==4 && std::string_view(argv[1])=="--server-manifest") {
+        const auto manifest=Json::parse(read(argv[2]));const auto client=manifest.at("runtime").at("version").get<std::string>();
+        auto selected=release(client);const auto asset=manifest.at("server").at("url").get<std::string>();
+        check(asset.starts_with("asset:"),"Server manifest must name a staged release asset");
+        selected["assets"].push_back(Json{{"name",asset.substr(6)},{"browser_download_url","https://github.com/Jish2637/ReSkateMerge/releases/download/v"+client+"/"+asset.substr(6)}});
+        responses[std::wstring(repo)+L"/releases/latest"]=selected.dump();
+        const auto relative="v"+client+"/launcher.json";
+        responses[std::wstring(prefix)+std::wstring(relative.begin(),relative.end())]=manifest.dump();
+        update::set_test_get(get);const auto config=update::fetch_config();
+        check(config && config->server.version==argv[3] && config->runtime.version==client && config->tag=="v"+client,"Server-only manifest rejected by existing client updater");
+        check(config->server_exe_sha256==manifest.at("server").at("exe_sha256").string(),"Server executable pin changed while resolving the release");
+        std::cout<<"Server-only update manifest accepted with unchanged client identity\n";return 0;
+    }
     if(argc==4 && std::string_view(argv[1])=="--server-archive") {
         const fs::path archive=argv[2],folder=argv[3];fs::create_directories(folder);
         write(folder/"ReSkateServer.json","preserved server settings");write(folder/"data/player-stats.json","preserved wallet data");

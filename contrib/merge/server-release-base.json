@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "game": {
+    "app_id": 3354750,
+    "depot_id": 3354751,
+    "manifest_id": "4621099302092747785",
+    "build_id": "25414733",
+    "skate_sha256": "fbce74d5e28ef525dbba2cb4adbebc13405bdbd88f31bc940bca45e4ae88b8f9"
+  },
+  "depot_downloader": {
+    "version": "3.4.0",
+    "url": "https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-windows-x64.zip",
+    "sha256": "41c9e9f0df54b3ad02e67a11726756e5c73283bd7c2e1b04acfa5ae4c2ed3767",
+    "size": 33474005
+  },
+  "launcher": {
+    "version": "0.1.11",
+    "url": "asset:ReSkateLauncher.exe",
+    "sha256": "26d6a82af35b6b8196df16b7828f9bf8ff182996b66103f086288603002658b2",
+    "size": 5818880
+  },
+  "runtime": {
+    "version": "0.1.11",
+    "url": "asset:ReSkate.dll",
+    "sha256": "8cbf1d2e27c073f8920fba7f76e182a2f5f4c014077ee1a870609886924f256f",
+    "size": 28050944
+  },
+  "server": {
+    "version": "2.1.5",
+    "url": "asset:ReSkateServer-v2.1.5-Windows-x64.zip",
+    "sha256": "7a4e383073d142587f3e807012f7ed5a9dbce91dac485921af3135a97c591e32",
+    "size": 3488803,
+    "exe_sha256": "ef65cb0ba184cefbe69f69821ff557f5bb6140ed09a08243d539756286666533"
+  }
+}

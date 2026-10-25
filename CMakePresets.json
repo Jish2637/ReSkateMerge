@@ -51,10 +51,10 @@
     {
       "name": "vs2026-server-release",
       "inherits": "vs2026-x64",
-      "displayName": "MSC server 2.1.5 Windows x64",
+      "displayName": "MSC server 2.1.6 Windows x64",
       "binaryDir": "${sourceDir}/build/vs2026-server-release",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "2.1.5",
+        "DINGOSDK_VERSION": "2.1.6",
         "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "OFF",
         "DINGOSDK_BUILD_TRICK_LOGGER_TESTS": "OFF",
         "DINGOSDK_BUILD_FIRST_PERSON_HOST_TESTS": "OFF",
@@ -63,6 +63,16 @@
         "DINGOSDK_BUILD_TRAINER_TESTS": "OFF",
         "DINGOSDK_BUILD_STEEZY_LANDINGS_TESTS": "OFF",
         "DINGOSDK_BUILD_HALL_OF_MEAT_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "msc-hub-server-release",
+      "inherits": "vs2026-server-release",
+      "displayName": "MSC server 2.1.6 Hub plugin release and validation",
+      "binaryDir": "${sourceDir}/build/msc-hub-server-release",
+      "cacheVariables": {
+        "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "ON",
+        "DINGOSDK_BUILD_LAUNCHER_TESTS": "ON"
       }
     },
     {

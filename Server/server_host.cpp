@@ -1563,7 +1563,7 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
     if (p.kind == PacketKind::physics_tuning || p.kind == PacketKind::physics_extras) return;
     if (p.kind == PacketKind::chat && p.text == "/msc-ui hello 1") {
         if(link->handshaken && routed_source(p,link->member,peer,true,id_) && link->msc_reads.accept(now_,12)) {
-            link->msc_ui=true;link->msc_until=now_+30000000;msc_send(*link);
+            link->msc_ui=true;link->msc_native_ui=true;link->msc_until=now_+30000000;msc_send(*link);
         }
         return;
     }
@@ -1652,6 +1652,9 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
             return;
         // A player whose tricks score differently takes part in nothing linked: their scores,
         // attempts and drops go nowhere, whatever the other players' games would do with them.
+        // The Hub is not a scoring competition. It retains the source/world/budget
+        // checks above, and must not disappear when a player has physics mods.
+        if (msc_plugin_receive(*link, p.throwdown)) return;
         if (link->scoring_flagged) return;
         link->last_packet = now_;
         // Plugin messages (Extension/Plugins/plugin_wire.h): the server's plugins hear what is for
