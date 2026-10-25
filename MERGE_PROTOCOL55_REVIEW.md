@@ -55,3 +55,5 @@ The server source remains byte-for-byte identical to the supplied server port. N
 ## Authorized release — 25 October 2026
 
 The user reported the corrected client tested and working and authorized publishing main and both client/server releases. Release versions are MSC client/launcher 0.1.11 and dedicated server 2.1.5. Release binaries enable updates exclusively from Jish2637/ReSkateMerge; the separate local-validation client preset keeps updates disabled. Server implementation is the supplied protocol-55 port; version stamping is controlled by CMake.
+
+The release server configuration test required renaming a shadowed local variable under MSVC /WX. This changes only the test; server implementation is preserved.
