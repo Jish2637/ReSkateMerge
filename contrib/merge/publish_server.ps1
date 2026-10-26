@@ -1,5 +1,5 @@
 param([Parameter(Mandatory=$true)][ValidateSet('Prepare','Publish','Verify')][string]$Mode,
-      [string]$Version='2.1.6', [string]$ReleaseTag='v0.1.11')
+      [string]$Version='2.1.7', [string]$ReleaseTag='v0.1.11')
 $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'
 $repo='Jish2637/ReSkateMerge'; $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $stage=Join-Path $root "artifacts/server-release-v$Version"
@@ -98,6 +98,6 @@ if($Mode -eq 'Prepare'){
     try{RenameAsset $p.assets."launcher-server-v$Version.pending.json".id 'launcher.json'}
     catch{RenameAsset $p.old_manifest.id 'launcher.json'; throw 'Manifest publication failed; the previous manifest was restored.'}
     $body=(Get-Content (Join-Path $root 'contrib/merge/MSC_HUB_SERVER_RELEASE.md') -Raw)+"`n`n---`n`nPrevious client release notes (client files remain unchanged):`n`n"+$p.old_body
-    $null=Api "/releases/$($r.id)" 'PATCH' @{name="MSC client v0.1.11 and server v$Version - MSC Hub plugin support"; body=$body}
+    $null=Api "/releases/$($r.id)" 'PATCH' @{name="MSC client v0.1.11 and server v$Version - MSC Hub and SKATE payouts"; body=$body}
     VerifyRelease
 }else{VerifyRelease}

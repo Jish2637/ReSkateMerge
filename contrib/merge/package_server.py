@@ -31,7 +31,7 @@ def archive(folder, target):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--build', default='build/msc-hub-server-release')
+    parser.add_argument('--build', default='build/vs2026-server-release')
     options = parser.parse_args()
     if git('status', '--porcelain'):
         raise SystemExit('Commit the complete release source before packaging.')
@@ -58,6 +58,10 @@ def main():
     shutil.copy2(ROOT / 'LICENSE', stage / 'LICENSE')
     shutil.copy2(ROOT / 'contrib/merge/MSC_HUB_SERVER_RELEASE.md', stage / 'INSTALL-AND-ROLLBACK.md')
     shutil.copy2(build / 'server-release-tests.xml', stage / 'TEST_RESULTS.xml')
+    wallet_results = ROOT / 'build/wallet-tests/wallet-tests.xml'
+    wallet = ET.parse(wallet_results).getroot()
+    assert int(wallet.attrib['failures']) == 0 and int(wallet.attrib.get('skipped', 0)) == 0
+    shutil.copy2(wallet_results, stage / 'WALLET_TEST_RESULTS.xml')
     for path in (ROOT / 'External').rglob('*'):
         if path.is_file() and path.name.lower().startswith(('license', 'copying', 'notice')):
             dest = stage / 'licenses' / path.relative_to(ROOT / 'External')
@@ -67,7 +71,9 @@ def main():
                     architecture='Windows x64', automatic_binary_updates=True, update_repository=REPO,
                     binaries_sha256={'ReSkateServer.exe': sha(binary)},
                     ctest_tests=int(results.attrib['tests']), ctest_failures=0,
-                    live_production_update='not yet verified',
+                    live_production_update='verified separately after publication',
+                    live_multiplayer_payouts='tested successfully by the user',
+                    wallet_schema=4,
                     broader_server_parks='separate poll-chat assertion failure; not a passing suite')
     (stage / 'BUILD_INFO.json').write_text(json.dumps(metadata, indent=2) + '\n')
     target = output / f'ReSkateServer-v{version}-Windows-x64.zip'
