@@ -77,6 +77,11 @@ int main() {
     turn.value = 1;
     log.throwdown(kush, wire(turn), nullptr, 21'000'000);
     check(said("[throwdown] Zee's Spot Battle: Kush scored 4,500 in round 1 (best 4,500)"), "a turn's points are logged");
+    auto live=log.current_for(kush,21'000'000);
+    check(live.is_object() && live.at("mode").get<std::string>()=="Spot Battle" && live.at("rows").size()==3 &&
+          live.at("rows").at(0).at("name").get<std::string>()=="Kush" && live.at("rows").at(0).at("score").get<std::int64_t>()==4500,
+          "Live event overlay did not rank the actual scores");
+    check(log.current_for(123456,21'000'000).is_null(),"Outsider could read unrelated event standings");
     log.throwdown(tally, wire(Kind::leave), nullptr, 22'000'000);
     check(said("[throwdown] Tally quit Zee's Spot Battle"), "quitting a running throwdown is logged");
     log.tick(60'000'000);

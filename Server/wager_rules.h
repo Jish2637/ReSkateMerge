@@ -1,16 +1,18 @@
 #pragma once
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 namespace dingosdk::server {
-// Callers provide unbiased draws in [0,count). The fractional remainder is an
-// independent Bernoulli draw, so integer wallets do not create a house edge.
+// Callers provide unbiased draws in [0,count). Fractional winning payouts
+// use independent Bernoulli draws. Ties forfeit the stake.
 template<class Draw>
 std::uint64_t highlow_payout(std::uint64_t stake,unsigned initial,unsigned second,bool higher,Draw draw) {
-    if(!stake || stake>1000000 || initial<1 || initial>13 || second<1 || second>13)throw std::invalid_argument("Invalid High / Low inputs");
+    if(!stake || stake>std::numeric_limits<std::uint64_t>::max()/12 || initial<1 || initial>13 || second<1 || second>13)throw std::invalid_argument("Invalid High / Low inputs");
     const auto wins=higher?13-initial:initial-1;
     if(!wins)throw std::invalid_argument("Impossible High / Low direction");
-    if(second==initial)return stake;
+    // A drawn tie is a settled loss: do not return the stake.
+    if(second==initial)return 0;
     if(higher?second<initial:second>initial)return 0;
     const auto numerator=12*stake;
     return numerator/wins+(draw(wins)<numerator%wins?1:0);

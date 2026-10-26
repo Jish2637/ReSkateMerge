@@ -968,6 +968,7 @@ void Host::send_roster(Guest *only_recipient, std::optional<std::uint32_t> chat_
     struct Variant {
         bool noclip{}, no_bail{}, boosts{}, ollies{}, enforce_tuning{}, announcement{};
         std::uint32_t plugin_card{}, plugin_poll{};
+        std::uint32_t local_object_clears{};
         std::vector<std::uint64_t> hidden; // in order
         auto operator<=>(const Variant &) const = default;
     };
@@ -977,6 +978,7 @@ void Host::send_roster(Guest *only_recipient, std::optional<std::uint32_t> chat_
     for (const auto &[id, guest] : guests_) {
         if (!guest->handshaken || (only_recipient && id != only_recipient->member.id)) continue;
         auto variant = common;
+        variant.local_object_clears = guest->local_object_clears;
         variant.announcement = !announcement_for_ || id == announcement_for_;
         if (const auto card = plugin_cards_.find(id); card != plugin_cards_.end()) variant.plugin_card = card->second.card.id;
         if (const auto poll = plugin_polls_.find(id); poll != plugin_polls_.end()) variant.plugin_poll = poll->second.id;
@@ -1013,6 +1015,9 @@ void Host::send_roster(Guest *only_recipient, std::optional<std::uint32_t> chat_
         p.enforce_tuning = variant.enforce_tuning;
         p.announcement = variant.announcement ? shown : multiplayer::ServerAnnouncement{};
         p.vote = vote;
+        // A targeted /delobj must clear the owner's local layout as well as
+        // the server's shared copy, without clearing anybody else's objects.
+        p.object_clears = object_clears_ + variant.local_object_clears;
         // The same card and poll ids: the same card and poll, so any of these players' is theirs.
         if (variant.plugin_card || variant.plugin_poll) plugin_screens_roster(*players.begin(), p.announcement, p.vote);
         broadcast(p, true, false, 0, &players);
@@ -1670,10 +1675,10 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
             } else broadcast(p, true, false, p.source);
             return;
         }
-        if (config_.activity_log || config_.announce_throwdowns || config_.throwdown_locks) {
-            activity_.throwdown(peer, p.throwdown, link->latest_root ? &link->latest_root->position : nullptr, now_);
-            update_throwdown_locks();
-        }
+        // Feed the live MSC event HUD even when console activity logging is disabled.
+        // This remains observation-only; scores still belong to the clients.
+        activity_.throwdown(peer, p.throwdown, link->latest_root ? &link->latest_root->position : nullptr, now_);
+        if (config_.throwdown_locks) update_throwdown_locks();
         broadcast(p, true, false, p.source);
         return;
     }

@@ -1,5 +1,6 @@
 #pragma once
 #include "Engine/Game/World/network_objects.h"
+#include "Engine/Core/Json/json.h"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -37,6 +38,7 @@ class ActivityLog {
     void tick(std::uint64_t now);
     // The players of the throwdowns running now, but those who quit theirs.
     std::set<std::uint64_t> playing() const;
+    Json current_for(std::uint64_t player,std::uint64_t now) const;
     // Whether two players are in one throwdown now: its leader, its queue or its players, but
     // those who quit.
     bool together(std::uint64_t a, std::uint64_t b) const;
@@ -48,7 +50,7 @@ class ActivityLog {
         std::vector<std::uint64_t> players; // from the start, in the leader's order
         std::set<std::uint64_t> quit;
         bool started{};
-        std::uint64_t last{};                             // last message about it
+        std::uint64_t last{}, started_at{};                             // last message about it
         std::map<std::uint64_t, std::int64_t> total;      // Jam: running total; Spot Battle: best turn
         std::map<std::uint64_t, std::int64_t> turn;       // Spot Battle: this turn's points so far
         std::map<std::uint64_t, std::array<unsigned, 2>> tries; // S.K.A.T.E.: landed, missed

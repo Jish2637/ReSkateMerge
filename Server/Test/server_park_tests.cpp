@@ -119,6 +119,8 @@ struct Game {
     std::vector<Json> msc_messages;
     std::vector<std::string> plugin_frames;
     std::vector<std::string> votes; // the roster's: the votes of the server's own that are on
+    ServerVote poll_card; // most recent vote card received over the real roster wire
+    std::uint32_t object_clears{};
     bool refused{}; // an object update the game would not have taken
     bool joined{};
 
@@ -166,6 +168,8 @@ struct Game {
                 if (p->map) map = p->map;
             }
             if (p->kind == PacketKind::roster) {
+                poll_card = p->vote;
+                object_clears = p->object_clears;
                 for (const auto &member : p->members)
                     if (member.id == p->source) server = member;
                 votes.clear();
@@ -188,6 +192,7 @@ struct Game {
 
 #include "msc_interface_host_cases.inc"
 #include "msc_features_host_cases.inc"
+#include "msc_allin_host_cases.inc"
 #include "msc_plugin_host_cases.inc"
 
 int run(const std::filesystem::path &fixtures) {
@@ -545,6 +550,11 @@ int run(const std::filesystem::path &fixtures) {
         };
         auto &c = games.at(76561198000000003ULL);
         command("poll First? | yes | no");
+        run_for(1000000);
+        check(a.poll_card.kind == server_vote_poll && a.poll_card.label == "First?" &&
+              a.poll_card.outcome == vote_running && a.poll_card.answers == std::vector<std::string>{"yes", "no"},
+              "The running poll question and choices did not reach the card");
+        check(!said("First?"), "The running poll question was repeated in chat");
         a.say("/2", now);
         c.say("/2", now);
         run_for(1000000);
@@ -554,6 +564,9 @@ int run(const std::filesystem::path &fixtures) {
         command("poll end");
         run_for(1000000);
         check(poll_logged("Poll \"First?\" ended: yes 0, no 2 (no wins).") == 1, "A poll counted an answer given twice twice");
+        check(a.poll_card.label == "First?" && a.poll_card.outcome == vote_passed &&
+              a.poll_card.counts == std::vector<std::uint16_t>{0, 2},
+              "The final poll counts did not reach the result card");
         check(!said("First?"), "A poll's question or result was repeated in chat");
         command("poll Second? | yes | no");
         a.say("/2", now);
@@ -666,7 +679,7 @@ int main(int argc, char **argv) {
     }
     try {
         if(std::string_view(argv[1])=="--msc-only") {
-            run_msc_interface_host();run_msc_features_host();run_msc_plugin_host();
+            run_msc_interface_host();run_msc_features_host();run_msc_plugin_host();run_msc_allin_host();
         } else run(argv[1]);
         const auto result=failures;
         if (!result) std::printf("server park tests passed\n");

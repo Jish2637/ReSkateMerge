@@ -2029,6 +2029,17 @@ struct WorldApi {
         if (!within(plugin.services_.now_ms(), plugin.server_second_, plugin.server_calls_, 20)) luaL_error(L, "more than 20 server calls in a second");
         return plugin;
     }
+    static int server_msc_skate_reward(lua_State* L) {
+        auto& plugin=authority(L,"reskate.server.msc_skate_reward");
+        luaL_checktype(L,1,LUA_TTABLE);
+        Json request;
+        try { request=lua_to_json(L,1); } catch(const std::exception& e) { return result(L,e.what()); }
+        if(request.dump().size()>4096)return result(L,"Reward request too large");
+        Json receipt=Json::object();
+        const auto why=game(plugin).msc_skate_reward(plugin.id(),request,receipt);
+        if(!why.empty())return result(L,why);
+        lua_pushboolean(L,true);push_json(L,receipt);return 2;
+    }
     static int server_kick(lua_State* L) {
         auto& plugin = authority(L, "reskate.server.kick");
         const auto player = player_of(L, 1);
@@ -2929,7 +2940,7 @@ void WorldApi::install(Plugin& plugin, lua_State* L) {
                                    {"mirror", animation_mirror}});
     add_functions(L, "outfit", {{"set", outfit_set}, {"clear", outfit_clear}, {"find", outfit_find}, {"slots", outfit_slots}, {"status", outfit_status}});
     add_functions(L, "audio", {{"play", audio_play}, {"set", audio_set}, {"stop", audio_stop}, {"playing", audio_playing}});
-    add_functions(L, "server", {{"kick", server_kick}, {"say", server_say}, {"tell", server_tell}, {"move", server_move},
+    add_functions(L, "server", {{"msc_skate_reward", server_msc_skate_reward}, {"kick", server_kick}, {"say", server_say}, {"tell", server_tell}, {"move", server_move},
                                 {"ban", server_ban}, {"unban", server_unban}, {"parks", server_parks}, {"park_spawn", server_park_spawn},
                                 {"park_remove", server_park_remove}, {"card", server_card}, {"poll", server_poll}, {"poll_close", server_poll_close},
                                 {"hide", server_hide}, {"unhide", server_unhide}});

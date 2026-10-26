@@ -33,9 +33,15 @@ bool Host::msc_plugin_receive(Guest& g,const std::vector<std::uint8_t>& bytes) {
             if(g.msc_plugin_outbox.empty())msc_send(g);
         } else if(op=="request" && nonce==g.msc_plugin_nonce &&
                   msc::text(envelope,"token",64)==g.msc_plugin_token &&
-                  !g.msc_plugin_token.empty() && g.msc_plugin_outbox.empty()) {
-            // Use the real guest, not any player identity supplied in the body.
+                  !g.msc_plugin_token.empty()) {
+            // Do not drop a real user action while older UI fragments are still
+            // queued (the queue can require several budget windows to drain).
+            // Replace stale outgoing fragments only for a valid, newer request;
+            // msc_request still performs its normal identity and dedup checks.
             auto body=envelope.at("body");
+            if(body.is_object() && msc::identity(body,"epoch")==g.member.epoch &&
+                msc::integer(body,"request")>g.msc_highest)
+                g.msc_plugin_outbox.clear();
             // Luau's empty table is encoded as {}, whereas zero-field staff
             // forms require an empty positional list in the existing handler.
             if(body.contains("args") && body.at("args").is_object() && body.at("args").empty())body["args"]=Json::array();
@@ -74,6 +80,7 @@ Json Host::msc_snapshot(Guest& g) {
     const auto* role=role_of(g.member.id);
     profile["vip"]=unlimited_points(g.member.id) || can(g.member.id,"kick")?"Active (staff)":role && role->name==settings.vip_role?"Active (VIP role)":p.vip_awarded?"Earned":p.active_us>=target?"Milestone reached; awaiting eligible roles":"Progress toward VIP";
     out["profile"]=std::move(profile);
+    out["event"]=activity_.current_for(g.member.id,now_);
     auto products=Json::array();
     const auto add=[&](std::string id,std::string label,std::string value,std::uint64_t price,bool owned,bool equipped,bool enabled,std::uint32_t colour=0) {
         auto c=Json::object();c["id"]=id;c["label"]=label;c["value"]=value;c["price"]=price;c["owned"]=owned;c["equipped"]=equipped;c["enabled"]=enabled;

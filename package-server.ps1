@@ -10,7 +10,7 @@ $root = $PSScriptRoot
 $buildDir = Join-Path $root 'build\vs2026-server-release'
 $outputDir = Join-Path $buildDir $Configuration
 $artifactDir = Join-Path $root 'artifacts'
-$archive = Join-Path $artifactDir "MSC-ReSkate-Server-Protocol55-$Configuration-Windows-x64.zip"
+$archive = Join-Path $artifactDir "MSC_Server-0.1.13-Windows-x64.zip"
 $stage = Join-Path $artifactDir '.stage-msc-server'
 
 function Require-File([string]$Path) {

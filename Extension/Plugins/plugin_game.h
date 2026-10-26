@@ -623,6 +623,8 @@ public:
     // 2 to max_vote_answers answers and runs `seconds` (0: the server's poll time); it is one card
     // with one `id` for all its players, and closes for each when they answer. A newer poll for a
     // player replaces theirs. What each player did comes back from take_poll_news.
+    // Optional MSC dedicated-server wallet bridge. Official clients need no extension.
+    virtual std::string msc_skate_reward(std::string_view, const Json&, Json&) { return unavailable; }
     virtual std::string server_card(std::string_view /*plugin*/, const std::vector<std::uint64_t>& /*players*/, std::string_view /*text*/,
                                     unsigned /*seconds*/) {
         return unavailable;

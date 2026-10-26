@@ -4,6 +4,7 @@
 #include "shop.h"
 #include "wager_rules.h"
 #include "slot_rules.h"
+#include "roulette_rules.h"
 #include "Engine/Core/Text/word_filter.h"
 #include <algorithm>
 #include <ctime>
@@ -33,6 +34,33 @@ std::uint64_t draw(std::uint64_t count) {
         if(value>=threshold)return value%count;
     }
 }
+
+// Blackjack uses one shuffled 52-card deck per private single-player round.
+unsigned blackjack_total(const Json& cards) {
+    unsigned total=0,aces=0;
+    for(const auto& card:cards){
+        const unsigned id=card.get<unsigned>();
+        if(id>=52)throw std::runtime_error("Invalid blackjack card");
+        const unsigned rank=id%13+1;
+        total+=rank==1?11:std::min(rank,10U);
+        if(rank==1)++aces;
+    }
+    while(total>21 && aces){total-=10;--aces;}
+    return total;
+}
+void blackjack_take(Json& detail,const char* hand){
+    const auto at=detail.at("next").get<unsigned>();
+    if(at>=52)throw std::runtime_error("Blackjack deck exhausted");
+    detail[hand].push_back(detail["deck"].at(at));
+    detail["next"]=at+1;
+}
+std::uint64_t blackjack_gross(std::uint64_t stake,unsigned player,unsigned dealer,bool natural){
+    if(player>21)return 0;
+    if(dealer>21 || player>dealer)return natural?2*stake+stake/2+(stake%2 && draw(2)==0):2*stake;
+    if(player==dealer)return 0;
+    return 0;
+}
+
 unsigned missing_shimmers(const PlayerStats &p) {
     unsigned count=0;for(const auto &[key,value]:shop_shimmers)
         if(std::ranges::find(p.shimmers,std::string(key))==p.shimmers.end())++count;
@@ -162,7 +190,7 @@ void Host::msc_slot_spin(Guest& g,std::uint64_t stake) {
     if(!stats_.players.contains(g.member.id))stats_joined(g);
     if(stats_failed_)throw std::runtime_error("MSC player data is paused.");
     if(now_<g.msc_slot_next)throw std::runtime_error("Finish the previous spin before playing again.");
-    if(stake<config_.wagers.min_stake || stake>config_.wagers.slots_max_stake)
+    if(stake<config_.wagers.min_stake || stake>max_stats_counter)
         throw std::runtime_error("The slot stake is outside the configured limits.");
     auto& p=stats_.players.at(g.member.id);
     if(p.wallet<stake)throw std::runtime_error("Not enough spendable MSC points.");
@@ -187,13 +215,108 @@ void Host::msc_slot_spin(Guest& g,std::uint64_t stake) {
     Wager w;w.id=stats_.next_wager_id++;w.creator=g.member.id;w.game="slots";w.state="settled";
     w.stake=stake;w.capacity=1;w.expires=utc_now();w.members.insert(g.member.id);w.payouts[g.member.id]=payout;
     w.detail["reels"]=Json::array({reels[0],reels[1],reels[2]});w.detail["multiplier"]=multiplier;
-    w.result=multiplier>1?"Slots win: "+std::to_string(payout)+" MSC ("+std::to_string(multiplier)+"x)":
-        multiplier==1?"Two matching symbols: stake returned.":"No matching symbols.";
+    w.result=multiplier>0?"Slots win: "+std::to_string(payout)+" MSC ("+std::to_string(multiplier)+"x)":
+        "No triple match: stake lost.";
     stats_.wagers.push_back(std::move(w));
     p.wallet=p.wallet-stake+payout;
     if(!wager_commit(before,ledger,next,"slots spin"))throw std::runtime_error("Slot spin could not be saved; no points changed.");
     g.msc_slot_next=now_+3500000;
 }
+
+void Host::msc_roulette_spin(Guest& g,std::uint64_t stake,std::string_view choice) {
+    if(!g.msc_ui || !g.msc_slots_ui)throw std::runtime_error("Roulette requires MSC Hub.");
+    if(!config_.player_stats.enabled || !config_.wagers.enabled || !config_.wagers.roulette_enabled || stats_failed_ || config_.file.empty())
+        throw std::runtime_error("Roulette is unavailable.");
+    if(!g.world_ready || text_timed_out(g.member.id) || !may(g.member.id,multiplayer::role_chat))
+        throw std::runtime_error("Current server permissions do not allow Roulette.");
+    if(choice!="red" && choice!="black" && choice!="green")throw std::runtime_error("Invalid Roulette bet.");
+    if(!stats_.players.contains(g.member.id))stats_joined(g);
+    if(stats_failed_)throw std::runtime_error("Player data is paused.");
+    if(now_<g.msc_slot_next)throw std::runtime_error("Wait for your next spin.");
+    if(stake<config_.wagers.min_stake || stake>max_stats_counter)
+        throw std::runtime_error("Roulette stake is outside the configured limits.");
+    auto& p=stats_.players.at(g.member.id);
+    if(p.wallet<stake)throw std::runtime_error("Insufficient MSC points.");
+    const auto multiplier=choice=="green"?20ULL:2ULL;
+    if(stake>p.stake_limit(multiplier))
+        throw std::runtime_error("Wallet is too close to the payout limit.");
+    if(stats_.next_wager_id>=max_stats_counter)throw std::runtime_error("Wager sequence exhausted.");
+    // Green zero is a separate 20x gross bet; red/black retain 2x gross.
+    const auto number=static_cast<unsigned>(draw(37));
+    const auto colour=roulette_colour(number);
+    const auto gross=roulette_payout(stake,number,choice);
+    const auto before=stats_.players;const auto ledger=stats_.wagers;const auto next=stats_.next_wager_id;
+    if(stats_.wagers.size()>=256){const auto it=std::ranges::find_if(stats_.wagers,[](const auto& w){return w.state!="pending";});
+        if(it==stats_.wagers.end())throw std::runtime_error("Wager ledger full.");stats_.wagers.erase(it);}
+    Wager w;w.id=stats_.next_wager_id++;w.creator=g.member.id;w.game="roulette";w.state="settled";
+    w.stake=stake;w.capacity=1;w.expires=utc_now();w.members.insert(g.member.id);w.payouts[g.member.id]=gross;
+    w.detail["number"]=number;w.detail["colour"]=colour;w.detail["choice"]=std::string(choice);
+    w.result=std::string("Roulette ")+std::to_string(number)+" "+std::string(colour)+" / bet "+std::string(choice)+" / payout "+std::to_string(gross)+" MSC";
+    stats_.wagers.push_back(std::move(w));p.wallet=p.wallet-stake+gross;
+    if(!wager_commit(before,ledger,next,"roulette spin"))throw std::runtime_error("Roulette spin was not saved. No points changed.");
+    g.msc_slot_next=now_+3500000;
+}
+void Host::msc_blackjack_action(Guest& g,std::string_view action,std::uint64_t expected,std::uint64_t stake) {
+    if(!g.msc_ui || !g.msc_slots_ui)throw std::runtime_error("Blackjack requires MSC Hub.");
+    if(!config_.player_stats.enabled || !config_.wagers.enabled || !config_.wagers.blackjack_enabled || stats_failed_ || config_.file.empty())
+        throw std::runtime_error("Blackjack is unavailable.");
+    if(!g.world_ready || text_timed_out(g.member.id) || !may(g.member.id,multiplayer::role_chat))
+        throw std::runtime_error("Current server permissions do not allow Blackjack.");
+    if(!stats_.players.contains(g.member.id))stats_joined(g);
+    if(stats_failed_)throw std::runtime_error("Player data is paused.");
+    tick_wagers();if(stats_failed_)throw std::runtime_error("Player data is paused.");
+    const auto id=g.member.id;
+    auto it=std::ranges::find_if(stats_.wagers,[&](const auto& w){return w.game=="blackjack" && w.creator==id && w.state=="pending";});
+    if(action=="deal"){
+        if(expected!=0 || it!=stats_.wagers.end())throw std::runtime_error("Finish your current Blackjack hand first.");
+        if(now_<g.msc_slot_next)throw std::runtime_error("Wait before dealing again.");
+        if(stake<config_.wagers.min_stake || stake>max_stats_counter)throw std::runtime_error("Invalid Blackjack stake.");
+        auto& p=stats_.players.at(id);
+        if(stake>p.wallet)throw std::runtime_error("Insufficient MSC points.");
+        if(p.wallet_limit()<3*stake || p.wallet-stake>p.wallet_limit()-3*stake)throw std::runtime_error("Wallet is too close to the payout limit.");
+        if(stats_.next_wager_id>=max_stats_counter)throw std::runtime_error("Wager sequence exhausted.");
+        std::array<unsigned,52> deck{};for(unsigned i=0;i<52;i++)deck[i]=i;
+        for(unsigned i=51;i>0;--i)std::swap(deck[i],deck[static_cast<unsigned>(draw(i+1))]);
+        const auto before=stats_.players;const auto ledger=stats_.wagers;const auto next=stats_.next_wager_id;
+        if(stats_.wagers.size()>=256){const auto old=std::ranges::find_if(stats_.wagers,[](const auto& w){return w.state!="pending";});
+            if(old==stats_.wagers.end())throw std::runtime_error("Wager ledger full.");stats_.wagers.erase(old);}
+        Wager w;w.id=stats_.next_wager_id++;w.creator=id;w.game="blackjack";w.state="pending";
+        w.capacity=3;w.stake=stake;w.expires=utc_now()+config_.wagers.highlow_timeout_seconds;w.members.insert(id);
+        w.detail["deck"]=Json::array();for(const auto card:deck)w.detail["deck"].push_back(card);
+        w.detail["next"]=0U;w.detail["player"]=Json::array();w.detail["dealer"]=Json::array();
+        blackjack_take(w.detail,"player");blackjack_take(w.detail,"dealer");
+        blackjack_take(w.detail,"player");blackjack_take(w.detail,"dealer");
+        const auto pv=blackjack_total(w.detail["player"]),dv=blackjack_total(w.detail["dealer"]);
+        if(pv==21 || dv==21){
+            const auto gross=pv==21 && dv==21?0:pv==21?blackjack_gross(stake,pv,dv,true):0;
+            w.state="settled";w.payouts[id]=gross;w.result=pv==21 && dv==21?"Both have Blackjack: tie, stake lost.":pv==21?"Blackjack!":"Dealer Blackjack.";
+            p.wallet=p.wallet-stake+gross;g.msc_slot_next=now_+2000000;
+        }else p.wallet-=stake;
+        stats_.wagers.push_back(std::move(w));
+        if(!wager_commit(before,ledger,next,"blackjack deal"))throw std::runtime_error("Blackjack deal could not be saved.");
+        return;
+    }
+    if(action!="hit" && action!="stand")throw std::runtime_error("Invalid Blackjack action.");
+    if(it==stats_.wagers.end() || !expected || expected!=it->id)throw std::runtime_error("Blackjack hand changed. Refresh before acting.");
+    const auto before=stats_.players;const auto ledger=stats_.wagers;const auto next=stats_.next_wager_id;
+    auto& w=*it;auto& detail=w.detail;
+    unsigned value=blackjack_total(detail.at("player"));
+    if(action=="hit" && value<21){blackjack_take(detail,"player");value=blackjack_total(detail["player"]);}
+    if(action=="stand" || value>=21){
+        if(value<=21){
+            while(blackjack_total(detail["dealer"])<17)blackjack_take(detail,"dealer");
+        }
+        const auto dealer=blackjack_total(detail["dealer"]);
+        const auto gross=blackjack_gross(w.stake,value,dealer,false);
+        w.state="settled";w.payouts[id]=gross;
+        w.result=value>21?"Bust.":dealer>21?"Dealer bust.":value==dealer?"Tie, stake lost.":value>dealer?"Player wins.":"Dealer wins.";
+        stats_.players.at(id).wallet+=gross;
+        g.msc_slot_next=now_+2000000;
+    }
+    if(!wager_commit(before,ledger,next,action=="hit"?"blackjack hit":"blackjack stand"))
+        throw std::runtime_error("Blackjack action could not be saved.");
+}
+
 bool Host::wager_refund(std::size_t index,std::string_view reason,std::uint64_t leaving) {
     if(index>=stats_.wagers.size() || stats_.wagers[index].state!="pending")return false;
     const auto before=stats_.players;const auto ledger=stats_.wagers;const auto next=stats_.next_wager_id;
@@ -211,14 +334,35 @@ bool Host::wager_refund(std::size_t index,std::string_view reason,std::uint64_t 
     return true;
 }
 void Host::tick_wagers(bool cancel_all,std::uint64_t leaving) {
+    // Settlement is durable immediately; public results follow the Hub's 3s
+    // reveal, allowing an extra 2.5s for snapshot/chunk delivery.
+    if(cancel_all)wager_announcements_.clear();
+    std::erase_if(wager_announcements_,[&](const WagerAnnouncement& item){
+        if(item.world!=world_)return true;
+        if(now_<item.at)return false;
+        for(auto remaining=std::string_view(item.text);!remaining.empty();) {
+            const auto end=remaining.find('\n');send_chat(remaining.substr(0,end));
+            if(end==std::string_view::npos)break;
+            remaining.remove_prefix(end+1);
+        }
+        return true;
+    });
     if(stats_failed_)return;
     const auto utc=utc_now();
     for(std::size_t i=0;i<stats_.wagers.size() && !stats_failed_;++i) {
         const auto &w=stats_.wagers[i];if(w.state!="pending")continue;
         const bool disabled=!config_.player_stats.enabled || !config_.wagers.enabled ||
-            (w.game=="coinflip"?!config_.wagers.coinflip_enabled:w.game=="dice"?!config_.wagers.dice_enabled:!config_.wagers.highlow_enabled);
-        if(cancel_all || disabled || utc>=w.expires)wager_refund(i,cancel_all?"server transition":disabled?"feature disabled":"timeout");
-        else if(leaving && w.members.contains(leaving))wager_refund(i,"player left",leaving);
+            (w.game=="coinflip"?!config_.wagers.coinflip_enabled:w.game=="dice"?!config_.wagers.dice_enabled:w.game=="blackjack"?!config_.wagers.blackjack_enabled:!config_.wagers.highlow_enabled);
+        const bool absent=leaving && w.members.contains(leaving);
+        const bool expired=utc>=w.expires;
+        if(w.game=="blackjack" && !cancel_all && !disabled && (expired || absent)) {
+            // Disconnecting or waiting out a losing hand must not refund the bet.
+            const auto before=stats_.players;const auto ledger=stats_.wagers;const auto next=stats_.next_wager_id;
+            auto& hand=stats_.wagers[i];hand.state="settled";hand.payouts[hand.creator]=0;
+            hand.result=expired?"Hand forfeited (timeout).":"Hand forfeited (player left).";
+            (void)wager_commit(before,ledger,next,"blackjack forfeit");
+        }else if(cancel_all || disabled || expired)wager_refund(i,cancel_all?"server transition":disabled?"feature disabled":"timeout");
+        else if(absent)wager_refund(i,"player left",leaving);
     }
 }
 void Host::wager_command(Guest &g,std::string_view game,std::string_view argument) {
@@ -236,7 +380,7 @@ void Host::wager_command(Guest &g,std::string_view game,std::string_view argumen
     std::size_t index=stats_.wagers.size();
     for(std::size_t i=0;i<stats_.wagers.size();++i)if(stats_.wagers[i].game==game && stats_.wagers[i].state=="pending" &&
         (game!="highlow" || stats_.wagers[i].creator==id)){index=i;break;}
-    const auto help=[&](){answer(game=="highlow"?"/highlow (/hl) <amount> | higher/h | lower/l | cancel/x. Numbers 1-13; ties refund; fair probability-based payouts.":
+    const auto help=[&](){answer(game=="highlow"?"/highlow (/hl) <amount> | higher/h | lower/l | cancel/x. Numbers 1-13; ties lose; payouts follow the winning probability.":
         "/"+std::string(game)+" ("+(game=="coinflip"?std::string("/cf"):std::string("/dd"))+") create/c <amount> | join/j | leave/l | start/go | status/s | cancel/x. Equal stakes; winner takes the pot; capacity: "+std::to_string(config_.max_players)+".");};
     if(verb.empty()){help();return;}
     if(verb=="cancel" || (verb=="leave" && game!="highlow")) {
@@ -260,8 +404,8 @@ void Host::wager_command(Guest &g,std::string_view game,std::string_view argumen
         if(creating && index!=stats_.wagers.size())return answer("A round is already open.");
         if(!creating && index==stats_.wagers.size())return answer("No available lobby.");
         const auto amount=creating?number(game=="highlow"?verb:rest):std::optional<std::uint64_t>{stats_.wagers[index].stake};
-        const auto maximum=game=="coinflip"?config_.wagers.coinflip_max_stake:game=="dice"?config_.wagers.dice_max_stake:config_.wagers.highlow_max_stake;
-        if(!amount || *amount<config_.wagers.min_stake || *amount>maximum || *amount>1000000)return answer("Stake must be "+std::to_string(config_.wagers.min_stake)+"-"+std::to_string(maximum)+" MSC.");
+        const auto maximum=max_stats_counter;
+        if(!amount || *amount<config_.wagers.min_stake || *amount>maximum)return answer("Stake must be "+std::to_string(config_.wagers.min_stake)+"-"+std::to_string(maximum)+" MSC.");
         if(game!="highlow" && config_.max_players<2)return answer("The server cap must allow at least two players.");
         if(!creating && (stats_.wagers[index].members.contains(id) || stats_.wagers[index].members.size()>=config_.max_players))return answer("Already joined or lobby is full.");
         // Capacity is immutable while this lobby is open. If reconfigured, require a fresh lobby.
@@ -325,9 +469,9 @@ void Host::wager_command(Guest &g,std::string_view game,std::string_view argumen
         for(const auto &[member,payout]:settled.payouts)stats_.players.at(member).wallet+=payout;
         if(!wager_commit(before,ledger,next,"settled"))return answer("Could not save result. Wager remains pending for restart refund; economy paused.");
         if(game=="highlow")answer(settled.result);
-        else for(auto remaining=std::string_view(settled.result);!remaining.empty();) {
-            const auto end=remaining.find('\n');send_chat(remaining.substr(0,end));
-            if(end==std::string_view::npos)break;remaining.remove_prefix(end+1);
+        else {
+            if(wager_announcements_.size()>=128)wager_announcements_.erase(wager_announcements_.begin());
+            wager_announcements_.push_back({now_+5500000,world_,settled.result});
         }
         return;
     }

@@ -141,6 +141,7 @@ class Host {
     // `players` empty is everyone on now. A card is up `seconds` (0: as long as an announcement);
     // a poll runs `seconds` (0: votes.poll_seconds), one id for all its players, closed for each
     // as they answer ("/2"); a player's newer poll replaces theirs. "" when shown, else why not.
+    std::string plugin_skate_reward(std::string_view plugin,const Json& request,Json& receipt);
     std::string plugin_card(std::string_view plugin, const std::vector<std::uint64_t> &players, std::string_view text, unsigned seconds);
     std::string plugin_poll(std::string_view plugin, const std::vector<std::uint64_t> &players, std::string_view question,
                             const std::vector<std::string> &answers, unsigned seconds, std::uint32_t &id);
@@ -186,6 +187,8 @@ class Host {
     Json msc_staff(Guest &);
     void msc_game_action(Guest &,const Json &);
     void msc_slot_spin(Guest &,std::uint64_t);
+    void msc_roulette_spin(Guest &,std::uint64_t,std::string_view);
+    void msc_blackjack_action(Guest &,std::string_view,std::uint64_t,std::uint64_t);
     std::string msc_staff_action(Guest &,const Json &);
     std::string msc_staff_guard(Guest &,std::string_view,const std::vector<std::string>&);
 
@@ -514,6 +517,8 @@ class Host {
     std::uint64_t words_revision_{};
     bool role_tags_checked_{};
     std::uint64_t now_{}, last_roster_{}, last_world_state_{}, next_object_update_{}, travel_started_{};
+    struct WagerAnnouncement { std::uint64_t at{}, world{}; std::string text; };
+    std::vector<WagerAnnouncement> wager_announcements_;
     std::string relay_status_; // Steam's relay network as last logged
     std::uint16_t direct_port_{};
     std::uint64_t next_relay_check_{};

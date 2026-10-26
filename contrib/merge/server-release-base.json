@@ -26,10 +26,10 @@
     "size": 28050944
   },
   "server": {
-    "version": "2.1.5",
-    "url": "asset:ReSkateServer-v2.1.5-Windows-x64.zip",
-    "sha256": "7a4e383073d142587f3e807012f7ed5a9dbce91dac485921af3135a97c591e32",
-    "size": 3488803,
-    "exe_sha256": "ef65cb0ba184cefbe69f69821ff557f5bb6140ed09a08243d539756286666533"
+    "version": "2.1.6",
+    "url": "asset:ReSkateServer-v2.1.6-Windows-x64.zip",
+    "sha256": "011a8916306c6809a8ff84e861ec838c38e39800b14cca33e20e516c3392fe73",
+    "size": 3455662,
+    "exe_sha256": "b0886d5caf05f96b11364d944c2f4e999b0a3e5cc7527264d03c51a1bbea6767"
   }
 }

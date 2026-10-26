@@ -82,18 +82,25 @@ std::string Host::object_moderation_command(std::string_view name, std::string_v
         if (selection.size() >= 2 && ((selection.front() == '"' && selection.back() == '"') || (selection.front() == '\'' && selection.back() == '\'')))
             selection = trim(selection.substr(1, selection.size() - 2));
         if (selection.empty()) return "Usage: /delobj <player name>. Unique partial names work.";
-        const auto query = lower(selection);
-        Guest *target{};
+        // MSC Hub staff forms transmit the server-validated player's Steam ID.
+        // Resolve IDs before name matching so tags, role prefixes, and renames
+        // do not break the object-removal action. Legacy /delobj name syntax stays.
+        const auto requested_id = number(selection);
+        Guest *target = requested_id ? find(*requested_id) : nullptr;
+        if (target && !target->handshaken) target = nullptr;
         std::vector<Guest *> matches;
-        std::vector<Guest *> exact;
-        for (const auto &[id, guest] : guests_) {
-            if (!guest->handshaken) continue;
-            const auto canonical = lower(guest_name(*guest));
-            const auto displayed = lower(display_name(*guest));
-            if (canonical == query || displayed == query) { exact.push_back(guest.get()); continue; }
-            if (canonical.find(query) != std::string::npos || displayed.find(query) != std::string::npos) matches.push_back(guest.get());
+        if (!target) {
+            const auto query = lower(selection);
+            std::vector<Guest *> exact;
+            for (const auto &[id, guest] : guests_) {
+                if (!guest->handshaken) continue;
+                const auto canonical = lower(guest_name(*guest));
+                const auto displayed = lower(display_name(*guest));
+                if (canonical == query || displayed == query) { exact.push_back(guest.get()); continue; }
+                if (canonical.find(query) != std::string::npos || displayed.find(query) != std::string::npos) matches.push_back(guest.get());
+            }
+            if (!exact.empty()) matches = std::move(exact);
         }
-        if (!exact.empty()) matches = std::move(exact);
         if (!target) {
             if (matches.empty()) return "No connected player matches that name. Use the player's full name or a longer partial name.";
             if (matches.size() != 1) {

@@ -4,6 +4,7 @@
 #include "Extension/Throwdowns/throwdown_wire.h"
 #include "serial_tasks.h"
 #include <array>
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -26,7 +27,9 @@ struct ShopSettings {
 };
 struct WagerSettings {
     bool enabled = false, coinflip_enabled = true, dice_enabled = true, highlow_enabled = true, slots_enabled = true;
+    bool roulette_enabled = false, blackjack_enabled = false;
     unsigned min_stake = 10, coinflip_max_stake = 1000, dice_max_stake = 1000, highlow_max_stake = 500, slots_max_stake = 500;
+    unsigned roulette_max_stake = 500, blackjack_max_stake = 500;
     unsigned lobby_timeout_seconds = 300, highlow_timeout_seconds = 120;
 };
 struct Wager {
@@ -44,6 +47,10 @@ struct PlayerStats {
     std::uint64_t joinmsg_last{}, wager_headroom{}; // headroom is derived from pending ledger records
     std::uint64_t wallet_limit() const { return max_stats_counter-wager_headroom; }
     std::uint64_t wallet{};
+    // Wallet-funded stakes, bounded only by representable worst-case winnings.
+    std::uint64_t stake_limit(std::uint64_t gross_multiplier) const {
+        return gross_multiplier>1?std::min(wallet,(wallet_limit()-wallet)/(gross_multiplier-1)):wallet;
+    }
     std::vector<std::string> tags, disabled_tags, shimmers;
     std::string equipped_tag, colour;
     std::uint64_t active_us{}, points{}, weekly_points{}, point_remainder{};
@@ -59,6 +66,8 @@ public:
     using Notice = std::function<void(std::uint64_t, const std::string &)>;
     std::map<std::uint64_t, PlayerStats> players;
     std::vector<Wager> wagers;
+    Json plugin_rewards=Json::object();
+    Json skate_reward(std::string id,std::uint64_t winner,std::vector<std::uint64_t> roster,std::int64_t utc);
     std::uint64_t next_wager_id = 1;
     void rebuild_headroom();
     void refund_pending();
@@ -90,7 +99,7 @@ private:
     mutable std::future<void> pending_save_;
     mutable bool save_completed_{};
     std::future<void> submit_save() const;
-    static void write_snapshot(const std::filesystem::path &,const std::map<std::uint64_t,PlayerStats> &, const std::vector<Wager> &, std::uint64_t);
+    static void write_snapshot(const std::filesystem::path &,const std::map<std::uint64_t,PlayerStats> &, const std::vector<Wager> &, std::uint64_t, const Json&);
     static void credit(PlayerStats &, std::uint64_t points);
 };
 } // namespace dingosdk::server

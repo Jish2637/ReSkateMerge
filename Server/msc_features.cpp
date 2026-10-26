@@ -9,12 +9,13 @@ namespace dingosdk::server {
 Json Host::msc_games(Guest& g) {
     auto games=Json::array();const auto utc=static_cast<std::uint64_t>(std::time(nullptr));
     const auto balance=stats_.players.contains(g.member.id)?stats_.players.at(g.member.id).wallet:0;
+    const auto limit=[&](std::uint64_t multiplier){return stats_.players.contains(g.member.id)?stats_.players.at(g.member.id).stake_limit(multiplier):0ULL;};
     const auto round=[&](const Wager& w) {
         auto j=Json::object();j["id"]=w.id;j["creator"]=std::to_string(w.creator);j["stake"]=w.stake;j["pot"]=w.stake*w.members.size();j["capacity"]=w.capacity;
         j["seconds"]=w.state=="pending" && utc<w.expires?w.expires-utc:0;j["initial"]=w.initial;j["second"]=0U;j["direction"]="";
         j["state"]=w.state;auto result=w.result;cut_text(result,512);j["result"]=result;
         j["winner"]="";j["my_payout"]=w.payouts.contains(g.member.id)?w.payouts.at(g.member.id):0;
-        if(w.state=="settled" && w.game!="highlow" && w.game!="slots" && !w.payouts.empty())j["winner"]=std::to_string(w.payouts.begin()->first);
+        if(w.state=="settled" && w.game!="highlow" && w.game!="slots" && w.game!="roulette" && w.game!="blackjack" && !w.payouts.empty())j["winner"]=std::to_string(w.payouts.begin()->first);
         // Bound the displayed roster even when the server allows 249-player lobbies.
         std::vector<std::uint64_t> shown;const auto include=[&](std::uint64_t id){if(w.members.contains(id) && shown.size()<10 && std::ranges::find(shown,id)==shown.end())shown.push_back(id);};
         include(g.member.id);include(w.creator);if(!w.payouts.empty())include(w.payouts.begin()->first);for(auto id:w.members)include(id);
@@ -37,17 +38,43 @@ Json Host::msc_games(Guest& g) {
                 j["reels"]=reels;j["multiplier"]=msc::integer(w.detail,"multiplier");
             }
         }catch(const std::exception&){j["reels"]=Json::array();}
+        if(w.game=="roulette")try {
+            j["number"]=msc::integer(w.detail,"number");
+            j["colour"]=msc::text(w.detail,"colour",8);
+            j["choice"]=msc::text(w.detail,"choice",8);
+        }catch(const std::exception&){}
+        if(w.game=="blackjack")try {
+            const auto& player=w.detail.at("player");const auto& dealer=w.detail.at("dealer");
+            auto mine=Json::array(), face=Json::array(), all=Json::array();
+            unsigned pv=0,dv=0,pa=0,da=0;
+            const auto display=[](unsigned card)->std::string{
+                const unsigned r=card%13+1;
+                const std::string rank=r==1?"A":r==11?"J":r==12?"Q":r==13?"K":std::to_string(r);
+                return rank+std::string(1,"CDHS"[card/13]);
+            };
+            for(const auto& c:player){const auto n=c.get<unsigned>();if(n>=52)throw std::runtime_error("Invalid player card");
+                mine.push_back(display(n));const auto r=n%13+1;pv+=r>10?10:r==1?11:r;if(r==1)pa++;}
+            for(const auto& c:dealer){const auto n=c.get<unsigned>();if(n>=52)throw std::runtime_error("Invalid dealer card");
+                all.push_back(display(n));const auto r=n%13+1;dv+=r>10?10:r==1?11:r;if(r==1)da++;}
+            while(pv>21 && pa>0){pv-=10;pa--;}while(dv>21 && da>0){dv-=10;da--;}
+            if(!all.empty())face.push_back(all.at(0));
+            j["player_cards"]=std::move(mine);j["dealer_visible"]=std::move(face);
+            j["player_total"]=pv;
+            if(w.state!="pending"){j["dealer_cards"]=std::move(all);j["dealer_total"]=dv;}
+        }catch(const std::exception&){}
         return j;
     };
-    for(const auto* id:{"coinflip","dice","highlow","slots"}) {
+    for(const auto* id:{"coinflip","dice","highlow","slots","roulette","blackjack"}) {
         const std::string game=id;
-        if(game=="slots" && !g.msc_slots_ui)continue;auto j=Json::object();j["id"]=game;j["label"]=game=="coinflip"?"Coin Flip":game=="dice"?"Dice Duel":game=="slots"?"Slots":"High / Low";
+        if(game=="slots" && !g.msc_slots_ui)continue;
+        if((game=="roulette" && !config_.wagers.roulette_enabled) || (game=="blackjack" && !config_.wagers.blackjack_enabled))continue;
+        auto j=Json::object();j["id"]=game;j["label"]=game=="coinflip"?"Coin Flip":game=="dice"?"Dice Duel":game=="slots"?"Slots":game=="roulette"?"Roulette":game=="blackjack"?"Blackjack":"High / Low";
         if(game=="slots") {
             const bool configured=config_.wagers.enabled && config_.wagers.slots_enabled;
             const bool enabled=configured && config_.player_stats.enabled && !stats_failed_ && g.world_ready && !text_timed_out(g.member.id) && may(g.member.id,multiplayer::role_chat) && !config_.file.empty();
             j["enabled"]=enabled;
             j["reason"]=enabled?"":!configured?"Slots are disabled in the server settings.":stats_failed_?"Player data is paused; spins cannot settle.":!g.world_ready?"Finish loading the map.":"Current server permissions do not allow MSC activities.";
-            j["minimum"]=config_.wagers.min_stake;j["maximum"]=config_.wagers.slots_max_stake;j["capacity"]=1U;
+            j["minimum"]=config_.wagers.min_stake;j["maximum"]=limit(25);j["capacity"]=1U;
             j["round"]=nullptr;j["previous"]=nullptr;
             for(auto it=stats_.wagers.rbegin();it!=stats_.wagers.rend();++it)if(it->game=="slots" && it->creator==g.member.id && it->state=="settled"){j["previous"]=round(*it);break;}
             auto actions=Json::array();if(enabled && balance>=config_.wagers.min_stake && now_>=g.msc_slot_next)actions.push_back("spin");j["actions"]=std::move(actions);
@@ -61,10 +88,35 @@ Json Host::msc_games(Guest& g) {
             }j["wins"]=std::move(wins);
             games.push_back(std::move(j));continue;
         }
+        if(game=="roulette" || game=="blackjack") {
+            const bool blackjack=game=="blackjack";
+            const bool configured=config_.wagers.enabled && (blackjack?config_.wagers.blackjack_enabled:config_.wagers.roulette_enabled);
+            const bool enabled=configured && config_.player_stats.enabled && !stats_failed_ && g.world_ready &&
+                !text_timed_out(g.member.id) && may(g.member.id,multiplayer::role_chat) && !config_.file.empty();
+            j["enabled"]=enabled;j["reason"]=enabled?"":"Casino game disabled or player economy unavailable.";
+            j["minimum"]=config_.wagers.min_stake;
+            j["maximum"]=limit(blackjack?3:20);
+            j["capacity"]=1U;
+            const Wager* current{};const Wager* previous{};
+            for(auto it=stats_.wagers.rbegin();it!=stats_.wagers.rend();++it)if(it->game==game && it->creator==g.member.id){
+                if(it->state=="pending" && !current)current=&*it;
+                else if(it->state!="pending" && !previous)previous=&*it;
+            }
+            j["round"]=current?round(*current):Json{};j["previous"]=previous?round(*previous):Json{};
+            auto actions=Json::array();
+            if(enabled){
+                if(!current && balance>=config_.wagers.min_stake && now_>=g.msc_slot_next)
+                    actions.push_back(blackjack?"deal":"red");
+                if(!current && !blackjack && balance>=config_.wagers.min_stake && now_>=g.msc_slot_next){actions.push_back("black");actions.push_back("green");}
+                if(current && blackjack){actions.push_back("hit");actions.push_back("stand");}
+            }
+            j["actions"]=std::move(actions);j["cooldown"]=now_<g.msc_slot_next?(g.msc_slot_next-now_+999999)/1000000:0;
+            games.push_back(std::move(j));continue;
+        }
         const bool configured=config_.wagers.enabled && (game=="coinflip"?config_.wagers.coinflip_enabled:game=="dice"?config_.wagers.dice_enabled:config_.wagers.highlow_enabled);
         const bool enabled=configured && config_.player_stats.enabled && !stats_failed_ && g.world_ready && !text_timed_out(g.member.id) && may(g.member.id,multiplayer::role_chat) && !config_.file.empty();
         j["enabled"]=enabled;j["reason"]=enabled?"":!configured?"This game is disabled in the server wager settings.":stats_failed_?"Player data is paused; stakes cannot change.":!g.world_ready?"Finish loading the map.":"Your current server permissions or chat restrictions prevent wagering.";
-        j["minimum"]=config_.wagers.min_stake;j["maximum"]=game=="coinflip"?config_.wagers.coinflip_max_stake:game=="dice"?config_.wagers.dice_max_stake:config_.wagers.highlow_max_stake;j["capacity"]=game=="highlow"?1:config_.max_players;
+        j["minimum"]=config_.wagers.min_stake;j["maximum"]=limit(game=="highlow"?12:config_.max_players);j["capacity"]=game=="highlow"?1:config_.max_players;
         const Wager* current{};const Wager* previous{};
         for(auto it=stats_.wagers.rbegin();it!=stats_.wagers.rend();++it)if(it->game==game && (game!="highlow" || it->creator==g.member.id)) {
             if(it->state=="pending"){if(!current)current=&*it;}else if(!previous)previous=&*it;
@@ -89,6 +141,13 @@ void Host::msc_game_action(Guest& g,const Json& j) {
     if(game=="slots") {
         if(action!="spin" || expected!=0)throw std::runtime_error("Invalid slot action.");
         msc_slot_spin(g,msc::integer(j,"stake"));return;
+    }
+    if(game=="roulette"){
+        if(expected!=0 || (action!="red" && action!="black" && action!="green"))throw std::runtime_error("Invalid Roulette action.");
+        msc_roulette_spin(g,msc::integer(j,"stake"),action);return;
+    }
+    if(game=="blackjack"){
+        msc_blackjack_action(g,action,expected,msc::integer(j,"stake"));return;
     }
     if(game!="coinflip" && game!="dice" && game!="highlow")throw std::runtime_error("Unknown MSC game.");
     tick_wagers();

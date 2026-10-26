@@ -116,6 +116,7 @@ void ActivityLog::throwdown(std::uint64_t sender, std::span<const std::uint8_t> 
     case Kind::start: {
         if (sender != m.leader || t.started) return;
         t.started = true;
+        t.started_at = now;
         t.players = m.order;
         t.queue.clear();
         std::string list;
@@ -199,6 +200,37 @@ void ActivityLog::tick(std::uint64_t now) {
         }
         ++it;
     }
+}
+
+Json ActivityLog::current_for(std::uint64_t player,std::uint64_t now) const {
+    for(const auto& [key,t]:throwdowns_) {
+        if(!t.started || t.quit.contains(player) || std::ranges::find(t.players,player)==t.players.end())continue;
+        if(t.series!=jam && t.series!=spot_battle && t.series!=skate)continue;
+        const auto known=[&](std::uint64_t id) {
+            const auto it=names_.find(id);return it==names_.end()?std::to_string(id):it->second;
+        };
+        Json out=Json::object();
+        out["mode"]=mode(t.series);out["leader"]=known(key.first);
+        out["elapsed_seconds"]=now>=t.started_at?(now-t.started_at)/1000000:0;
+        out["is_skate"]=t.series==skate;
+        std::vector<std::uint64_t> ids;
+        for(const auto id:t.players)if(!t.quit.contains(id))ids.push_back(id);
+        if(t.series!=skate)std::ranges::stable_sort(ids,[&](std::uint64_t a,std::uint64_t b){
+            const auto value=[&](std::uint64_t id){const auto i=t.total.find(id);return i==t.total.end()?std::int64_t{}:i->second;};
+            return value(a)>value(b);
+        });
+        Json rows=Json::array();
+        for(const auto id:ids){if(rows.size()>=5)break;
+            auto name=known(id);if(name.size()>48)name.resize(48);
+            auto row=Json::object();row["name"]=name;row["self"]=id==player;
+            if(t.series==skate){const auto it=t.tries.find(id);row["landed"]=it==t.tries.end()?0U:it->second[0];row["missed"]=it==t.tries.end()?0U:it->second[1];}
+            else {const auto it=t.total.find(id);row["score"]=it==t.total.end()?0:it->second;}
+            rows.push_back(std::move(row));
+        }
+        out["rows"]=std::move(rows);
+        return out;
+    }
+    return Json{};
 }
 
 std::set<std::uint64_t> ActivityLog::playing() const {

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <cmath>
 #include <format>
 #include <map>
@@ -49,6 +50,9 @@ std::string fingerprint_of(const std::filesystem::path &directory) {
 class ServerGame final : public Game {
   public:
     ServerGame(Host &host, ServerPlugins::Log log) : host_(host), log_(std::move(log)) {}
+    std::string msc_skate_reward(std::string_view plugin,const Json& request,Json& receipt) override {
+        return host_.plugin_skate_reward(plugin,request,receipt);
+    }
     std::string kick(std::uint64_t player, std::string_view why) override {
         if (!present(player)) return "that player is not on the server";
         host_.drop(player, why.empty() ? std::string("Removed from the server.") : "Removed from the server: " + std::string(why),
@@ -353,5 +357,35 @@ std::optional<std::string> ServerPlugins::command(std::string_view line) {
         else if (!plugin.reason.empty()) text += " (" + plugin.reason + ")";
     }
     return text;
+}
+
+std::string Host::plugin_skate_reward(std::string_view plugin,const Json& request,Json& receipt) {
+    // Trust only this locally installed authority plugin, never a Hub/client packet.
+    if(plugin!="MSC_Skate")return "Only the MSC_Skate server plugin may award this reward";
+    if(!config_.player_stats.enabled || stats_failed_)return "MSC wallet rewards are unavailable or paused";
+    try {
+        if(!request.is_object() || !request.contains("id") || !request.contains("winner") || !request.contains("players"))return "Invalid reward request";
+        const auto winnerText=request.at("winner").get<std::string>();
+        std::size_t used{};const auto winner=std::stoull(winnerText,&used);
+        if(used!=winnerText.size() || winnerText!=std::to_string(winner) || !multiplayer::individual_steam_id(winner))return "Invalid winner";
+        const auto& roster=request.at("players");if(!roster.is_array() || roster.size()<2 || roster.size()>10)return "Invalid frozen roster";
+        std::vector<std::uint64_t> players;
+        for(const auto& item:roster) {
+            const auto text=item.get<std::string>();used=0;const auto id=std::stoull(text,&used);
+            if(used!=text.size() || text!=std::to_string(id) || !multiplayer::individual_steam_id(id))return "Invalid participant";
+            players.push_back(id);
+        }
+        if(!request.contains("successful_sets") || !request.at("successful_sets").is_number_integer() || request.at("successful_sets").get<int>()<1 ||
+           !request.contains("completed_turns") || !request.at("completed_turns").is_number_integer() || request.at("completed_turns").get<int>()<1)return "Match has no completed set/defence";
+        account_stats();tick_stats();if(stats_failed_)return "MSC wallet persistence is paused";
+        receipt=stats_.skate_reward(request.at("id").get<std::string>(),winner,players,static_cast<std::int64_t>(std::time(nullptr)));
+        log_(std::string("[msc-skate-reward] ")+(receipt.contains("duplicate")?"duplicate id=":"paid id=")+request.at("id").get<std::string>()+" winner="+winnerText+" amount="+std::to_string(receipt.at("amount").get<unsigned>()));
+        if(!receipt.contains("duplicate"))send_player_chat(winner,"S.K.A.T.E. win: +"+std::to_string(receipt.at("amount").get<unsigned>())+" MSC points.");
+        return {};
+    } catch(const std::exception& e) {
+        const std::string why=e.what();
+        if(why.starts_with("MSC reward save failed:"))stats_failed_=true;
+        log_("[msc-skate-reward] refused: "+why);return why;
+    }
 }
 } // namespace dingosdk::server

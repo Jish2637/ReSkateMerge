@@ -150,8 +150,8 @@ int main() {
         result.open(ordered_file);check(rejected && result.players.at(99).wallet==77,"Background failure lost prior wallet or was hidden");
         std::filesystem::remove(ordered_file.string()+".tmp");
     }
-    // Enumerate every second number and every rounding residue. Expected gross
-    // return is exactly the stake, including the one tie outcome.
+    // Enumerate every second number and every rounding residue. Ties
+    // forfeit the stake; only the winning outcomes pay out.
     for(unsigned starting=1;starting<=13;++starting)for(bool higher:{false,true}) {
         const auto wins=higher?13-starting:starting-1;
         if(!wins){bool rejected=false;try{highlow_payout(10,starting,1,higher,[](auto){return 0;});}catch(...){rejected=true;}check(rejected,"Impossible prediction accepted");continue;}
@@ -159,7 +159,8 @@ int main() {
             std::uint64_t sum=0;
             for(unsigned second=1;second<=13;++second)for(unsigned residue=0;residue<wins;++residue)
                 sum+=highlow_payout(stake,starting,second,higher,[&](auto){return residue;});
-            check(sum==13*stake*wins,"High Low expected return differs from stake");
+            check(sum==12*stake*wins,"High Low return differs from winning-only payout");
+            check(highlow_payout(stake,starting,starting,higher,[](auto){return 0;})==0,"High Low tie refunded stake");
         }
     }
     {std::vector<unsigned> rolls={6,6,1,2,5};unsigned at=0,roll_notices=0;
@@ -187,6 +188,50 @@ int main() {
      for(std::size_t i=0;i<slots.wagers.size();++i)check(recovered.wagers.at(i).detail==slots.wagers.at(i).detail && recovered.wagers.at(i).payouts==slots.wagers.at(i).payouts,"Slots outcome changed on restart");
      recovered.refund_pending();recovered.save();PlayerStatsStore twice;twice.open(path);
      check(twice.players.at(1).wallet==balance && twice.wagers.size()==125,"Restart paid/refunded settled Slots again");}
+    // Casino ledger records, concurrent private hands and settled losses survive restart.
+    {PlayerStatsStore casino;const auto path=folder/"casino.json";casino.open(path);
+     casino.joined(1,"One",1,monday);casino.joined(2,"Two",1,monday);
+     casino.players[1].wallet=500;casino.players[2].wallet=500;
+     Wager roulette;roulette.id=casino.next_wager_id++;roulette.creator=1;roulette.game="roulette";
+     roulette.state="settled";roulette.stake=10;roulette.capacity=1;roulette.members={1};
+     roulette.payouts[1]=0;roulette.detail["number"]=0U;roulette.detail["colour"]="green";roulette.detail["choice"]="red";
+     casino.wagers.push_back(roulette);casino.players[1].wallet-=10;
+     Wager one;one.id=casino.next_wager_id++;one.creator=1;one.game="blackjack";one.state="pending";
+     one.stake=10;one.capacity=3;one.members={1};one.expires=monday+120;one.detail["player"]=Json::array({1,2});
+     Wager two=one;two.id=casino.next_wager_id++;two.creator=2;two.members={2};
+     casino.wagers.push_back(one);casino.wagers.push_back(two);
+     casino.players[1].wallet-=10;casino.players[2].wallet-=10;
+     casino.rebuild_headroom();casino.save();
+     PlayerStatsStore revived;revived.open(path);
+     check(revived.wagers.size()==3 && revived.wagers[0].payouts.at(1)==0 && revived.wagers[0].detail.at("number")==0,
+         "Roulette settlement lost after restart");
+     check(revived.players[1].wager_headroom==30 && revived.players[2].wager_headroom==30,
+         "Concurrent Blackjack hands did not recover their own escrow");
+     revived.refund_pending();revived.save();PlayerStatsStore recovered;recovered.open(path);
+     check(recovered.players[1].wallet==490 && recovered.players[2].wallet==500,
+         "Restart recovery double-charged or refunded a settled roulette bet");
+     check(recovered.wagers[1].state=="refunded" && recovered.wagers[2].state=="refunded",
+         "Blackjack recovery left pending hands");}
+    // Stakes above the old million-point cap and green wins survive persistence.
+    {PlayerStatsStore large;const auto path=folder/"all-in.json";large.open(path);
+     large.joined(1,"One",1,monday);large.joined(2,"Two",1,monday);
+     const std::uint64_t stake=2000001;
+     large.players[1].wallet=100000000;large.players[2].wallet=100000000;
+     for(const auto* game:{"coinflip","dice","highlow","slots","roulette","blackjack"}) {
+         Wager w;w.id=large.next_wager_id++;w.game=game;w.creator=1;w.stake=stake;w.state="settled";w.members={1};w.capacity=1;
+         if(w.game=="coinflip" || w.game=="dice"){w.members.insert(2);w.capacity=2;w.payouts[1]=2*stake;}
+         else if(w.game=="roulette"){w.payouts[1]=20*stake;w.detail["number"]=0U;w.detail["colour"]="green";w.detail["choice"]="green";}
+         else if(w.game=="slots")w.payouts[1]=25*stake;
+         else if(w.game=="blackjack"){w.capacity=3;w.payouts[1]=2*stake+stake/2;}
+         else {w.initial=12;w.payouts[1]=12*stake;}
+         large.wagers.push_back(w);
+     }
+     large.save();PlayerStatsStore restored;restored.open(path);
+     check(restored.wagers.size()==6 && restored.wagers[4].payouts.at(1)==20*stake,"Large wager or green payout failed to load");
+     Wager pending;pending.id=restored.next_wager_id++;pending.game="highlow";pending.creator=1;pending.members={1};pending.stake=stake;pending.initial=12;pending.capacity=1;
+     restored.wagers.push_back(pending);restored.players[1].wallet-=stake;restored.rebuild_headroom();restored.save();
+     PlayerStatsStore allin_recovered;allin_recovered.open(path);allin_recovered.refund_pending();allin_recovered.save();
+     check(allin_recovered.players[1].wallet==100000000,"Large unplayed stake was not refunded on restart");}
     // Failed write preserves the last file. Malformed data is never replaced on load.
     std::filesystem::create_directory(file.string()+".tmp");bool threw=false;
     try{store.save();}catch(...){threw=true;}check(threw,"Save failure is reported");

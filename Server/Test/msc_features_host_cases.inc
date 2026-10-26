@@ -39,8 +39,14 @@ int run_msc_features_host() {
     if(!round)return 1;
     retry(p,create);check(std::ranges::count_if(q.chat,[](const auto& line){return line.find("opened a Coin Flip lobby")!=std::string::npos;})==announcements,"Duplicate UI create repeated announcement");check(saved().wallet==base-10,"Duplicate create reserved twice");
     act(q,"coinflip","join",round->id);check(saved().wallet+saved(other).wallet==total-20 && saved(other).wallet==20000-10,"Join did not reserve real administrator funds");
+    const auto resultChats=[&](const Game& guest,std::string_view name){return std::ranges::count_if(guest.chat,[&](const auto& line){return line.find(name)!=std::string::npos && line.find(" won ")!=std::string::npos;});};
     const auto settle=act(p,"coinflip","start",round->id);check(saved().wallet+saved(other).wallet==total,"Coin Flip settlement lost or created points");
     retry(p,settle);check(saved().wallet+saved(other).wallet==total,"Duplicate start paid twice");
+    check(resultChats(p,"coinflip:")==0 && resultChats(q,"coinflip:")==0,"Coin Flip announced its result before the reveal");
+    run_for(4000000);
+    check(resultChats(p,"coinflip:")==1 && resultChats(q,"coinflip:")==1,"Coin Flip result was not announced once after the reveal");
+    retry(p,settle);run_for(5500000);
+    check(resultChats(q,"coinflip:")==1,"A duplicate settlement re-announced its result");
     check(!view(p,"coinflip").round && view(p,"coinflip").previous.has_value(),"Coin Flip result missing");
     act(p,"coinflip","create");const auto replacement=view(p,"coinflip").round->id;
     act(p,"coinflip","cancel",round->id);check(view(p,"coinflip").round->id==replacement,"Stale action cancelled a different round");
@@ -50,6 +56,9 @@ int run_msc_features_host() {
     retry(q,leave);check(saved(other).wallet==after_leave && saved().wallet+saved(other).wallet==total-10,"Leave refund repeated or failed");
     act(p,"coinflip","cancel",leave_round);check(saved().wallet+saved(other).wallet==total,"Creator cancellation after leave failed refund");
     act(p,"dice","create");const auto dice=view(p,"dice").round->id;act(q,"dice","join",dice);act(p,"dice","start",dice);
+    check(resultChats(q,"dice:")==0,"Dice announced its result before the reveal");run_for(2000000);
+    check(resultChats(q,"dice:")==0,"Dice announced during the reveal window");run_for(3000000);
+    check(resultChats(q,"dice:")==1,"Dice result was not announced after the reveal");
     const auto outcome=view(p,"dice").previous;check(outcome && !outcome->rolls.empty(),"Dice faces missing from authoritative result");
     if(outcome)for(const auto& roll:outcome->rolls)check(roll.value>=1 && roll.value<=6,"Invalid authoritative dice face");
     check(saved().wallet+saved(other).wallet==total,"Dice settlement failed conservation");
@@ -85,6 +94,25 @@ int run_msc_features_host() {
     check(state(q).staff->actions.size()>=130,"Admin tools missing");
     auto staff=[&](Game& g,const char* op,const char* action,Json args){auto j=Json::object();j["op"]=op;j["action"]=action;j["args"]=args;return send(g,j);};
     auto confirm=[&](Game& g,const std::string& token){auto j=Json::object();j["op"]="staff-confirm";j["token"]=token;return send(g,j);};
+    // Quick actions submit this same action/Steam-ID pair through the bridge.
+    // Verify the target receives the stock client's clear signal, not just chat.
+    auto place=[&](Game& g,unsigned id){ObjectState objects;const std::vector<NetworkObject> layout={{id,"own_bk_rail_01",{1,2,3},{0,0,0,1},1}};objects.replace(layout);
+        for(const auto& chunk:objects.updates(0)){auto packet=g.header(PacketKind::objects,now);packet.objects=chunk;g.send(packet);}run_for(1500000);};
+    place(p,101);place(q,102);
+    const auto player_clear=p.object_clears,admin_clear=q.object_clears;
+    staff(p,"staff-preview","delobj.player",Json::array({std::to_string(other)}));
+    check(q.object_clears==admin_clear,"Unprivileged quick action cleared another player");
+    staff(q,"staff-preview","delobj.player",Json::array({std::to_string(other)}));
+    check(state(q).staff->quote.has_value() && q.object_clears==admin_clear,"Self-clear preview changed objects or had no review");
+    const auto self_clear_request=confirm(q,state(q).staff->quote->token);
+    check(q.object_clears==admin_clear+1 && p.object_clears==player_clear,"Self-clear did not reach only the selected player's roster");
+    retry(q,self_clear_request);check(q.object_clears==admin_clear+1,"Duplicate quick confirmation cleared objects twice");
+    staff(q,"staff-preview","delobj.player",Json::array({std::to_string(player)}));
+    confirm(q,state(q).staff->quote->token);
+    check(p.object_clears==player_clear+1 && q.object_clears==admin_clear+1,"Other-player clear did not reach only its target");
+    run_for(3000000);check(p.object_clears==player_clear+1 && q.object_clears==admin_clear+1,"Periodic roster repeated a local clear");
+    host.command("clear-objects",other);run_for(1100000);
+    check(p.object_clears==player_clear+2 && q.object_clears==admin_clear+2,"Global clear stopped working after a targeted clear");
     const auto original_voice=config.voice_chat;
     staff(q,"staff-preview","voice",Json::array({original_voice?"off":"on"}));check(config.voice_chat==original_voice && state(q).staff->quote.has_value(),"Staff preview changed settings");
     auto token=state(q).staff->quote->token;const auto confirmed=confirm(q,token);check(config.voice_chat!=original_voice,"Staff confirmation did not execute");

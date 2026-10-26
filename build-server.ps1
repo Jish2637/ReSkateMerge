@@ -26,7 +26,7 @@ try {
     if (-not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
         throw 'cmake.exe was not found. Install Visual Studio 2026 with C++ and CMake support.'
     }
-    $configureArgs = @('--preset', 'vs2026-server-release', '-DDINGOSDK_LAUNCHER_AUTO_UPDATE=OFF')
+    $configureArgs = @('--preset', 'vs2026-server-release', '-DDINGOSDK_LAUNCHER_AUTO_UPDATE=ON')
     if ($RunTests) { $configureArgs += '-DDINGOSDK_BUILD_MULTIPLAYER_TESTS=ON' }
     Invoke-Checked 'cmake.exe' $configureArgs
     Invoke-Checked 'cmake.exe' @('--build', $buildDir, '--config', $Configuration,

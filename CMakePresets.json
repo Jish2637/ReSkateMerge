@@ -51,10 +51,10 @@
     {
       "name": "vs2026-server-release",
       "inherits": "vs2026-x64",
-      "displayName": "MSC server 2.1.6 Windows x64",
+      "displayName": "MSC server 2.1.7 Windows x64",
       "binaryDir": "${sourceDir}/build/vs2026-server-release",
       "cacheVariables": {
-        "DINGOSDK_VERSION": "2.1.6",
+        "DINGOSDK_VERSION": "2.1.7",
         "DINGOSDK_BUILD_MULTIPLAYER_TESTS": "OFF",
         "DINGOSDK_BUILD_TRICK_LOGGER_TESTS": "OFF",
         "DINGOSDK_BUILD_FIRST_PERSON_HOST_TESTS": "OFF",

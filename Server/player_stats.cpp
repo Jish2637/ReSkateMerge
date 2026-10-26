@@ -31,7 +31,7 @@ void PlayerStatsStore::open(const std::filesystem::path &path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("Cannot read player-stats.json");
     const auto root = Json::parse(std::string(std::istreambuf_iterator<char>(in), {}), {64 * 1024 * 1024, 32, 8000000});
-    if (!root.at("version").is_number_integer() || (root.at("version").get<int>() != 1 && root.at("version").get<int>() != 2 && root.at("version").get<int>() != 3) || !root.at("players").is_array())
+    if (!root.at("version").is_number_integer() || (root.at("version").get<int>() != 1 && root.at("version").get<int>() != 2 && root.at("version").get<int>() != 3 && root.at("version").get<int>() != 4) || !root.at("players").is_array())
         throw std::runtime_error("Unsupported player stats file");
     std::map<std::uint64_t, PlayerStats> loaded;
     for (const auto &j : root.at("players")) {
@@ -87,11 +87,12 @@ void PlayerStatsStore::open(const std::filesystem::path &path) {
             throw std::runtime_error("Invalid player stats calendar or remainder");
         loaded.emplace(id,std::move(p));
     }
-    if(root.at("version").get<int>()==3 && (!root.contains("wagers") || !root.contains("next_wager_id")))throw std::runtime_error("Missing wager ledger");
+    if(root.at("version").get<int>()>=3 && (!root.contains("wagers") || !root.contains("next_wager_id")))throw std::runtime_error("Missing wager ledger");
     std::vector<Wager> ledger;
     const auto next=root.contains("next_wager_id")?natural(root,"next_wager_id"):1;
     if(!next)throw std::runtime_error("Invalid wager sequence");
-    std::set<std::uint64_t> ids, highlow_players;
+    std::set<std::uint64_t> ids;
+    std::set<std::pair<std::string,std::uint64_t>> private_games;
     std::set<std::string> pending_games;
     const auto identity=[](const Json &value) {
         const auto text=value.get<std::string>();
@@ -108,8 +109,8 @@ void PlayerStatsStore::open(const std::filesystem::path &path) {
             w.stake=natural(j,"stake");w.expires=natural(j,"expires");w.capacity=natural(j,"capacity");w.initial=natural(j,"initial");
             w.game=j.at("game").get<std::string>();w.state=j.at("state").get<std::string>();w.result=j.at("result").get<std::string>();
             if(j.contains("detail") && j.at("detail").is_object() && j.at("detail").dump().size()<=8192)w.detail=j.at("detail");
-            if(!w.id || w.id>=next || !ids.insert(w.id).second || !w.stake || w.stake>1000000 || !w.capacity || w.capacity>multiplayer_player_limit-1 ||
-               (w.game!="coinflip" && w.game!="dice" && w.game!="highlow" && w.game!="slots") ||
+            if(!w.id || w.id>=next || !ids.insert(w.id).second || !w.stake || w.stake>max_stats_counter || !w.capacity || w.capacity>multiplayer_player_limit-1 ||
+               (w.game!="coinflip" && w.game!="dice" && w.game!="highlow" && w.game!="slots" && w.game!="roulette" && w.game!="blackjack") ||
                (w.state!="pending" && w.state!="settled" && w.state!="refunded"))throw std::runtime_error("Invalid wager record");
             for(const auto &m:j.at("members")) {
                 const auto id=identity(m);
@@ -122,27 +123,44 @@ void PlayerStatsStore::open(const std::filesystem::path &path) {
             if(w.members.empty() || w.members.size()>w.capacity || !w.members.contains(w.creator) ||
                (w.game=="highlow" && (w.members.size()!=1 || w.initial<1 || w.initial>13)) ||
                (w.game=="slots" && (w.capacity!=1 || w.members.size()!=1 || w.state!="settled")) ||
+               (w.game=="roulette" && (w.capacity!=1 || w.members.size()!=1 || w.state!="settled")) ||
+               (w.game=="blackjack" && (w.capacity!=3 || w.members.size()!=1)) ||
                (w.state=="pending" && !w.payouts.empty()))throw std::runtime_error("Invalid wager membership");
             if(w.state=="pending") {
-                if(w.game=="highlow"?!highlow_players.insert(w.creator).second:!pending_games.insert(w.game).second)
-                    throw std::runtime_error("Duplicate pending game");
+                if(w.game=="highlow" || w.game=="blackjack"){
+                    if(!private_games.emplace(w.game,w.creator).second)throw std::runtime_error("Duplicate private game");
+                } else if(!pending_games.insert(w.game).second)throw std::runtime_error("Duplicate pending game");
             } else if(w.state=="refunded") {
                 if(w.payouts.size()!=w.members.size())throw std::runtime_error("Incomplete refund");
                 for(auto id:w.members)if(w.payouts.at(id)!=w.stake)throw std::runtime_error("Invalid refund amount");
             } else if(w.game=="slots") {
                 if(w.payouts.size()!=1 || w.payouts.begin()->second>25*w.stake)throw std::runtime_error("Invalid slots settlement");
+            } else if(w.game=="roulette" || w.game=="blackjack") {
+                if(w.payouts.size()!=1 || w.payouts.begin()->second>(w.game=="blackjack"?3:20)*w.stake)
+                    throw std::runtime_error("Invalid casino settlement");
             } else if(w.game!="highlow") {
                 if(w.payouts.size()!=1 || w.payouts.begin()->second!=w.stake*w.members.size())throw std::runtime_error("Invalid multiplayer settlement");
             } else if(w.payouts.size()!=1 || w.payouts.begin()->second>12*w.stake)throw std::runtime_error("Invalid High Low settlement");
             ledger.push_back(std::move(w));
         }
     }
+    Json rewards=Json::object();
+    if(root.at("version").get<int>()>=4 && !root.contains("plugin_rewards"))throw std::runtime_error("Missing reward receipts");
+    if(root.contains("plugin_rewards")) {
+        rewards=root.at("plugin_rewards");
+        if(!rewards.is_object() || rewards.size()>10000)throw std::runtime_error("Invalid reward receipts");
+        for(const auto& [id,row]:rewards.items()) {
+            if(id.empty() || id.size()>200 || !row.is_object() || row.at("status").get<std::string>()!="paid" || !row.at("amount").is_number_integer() ||
+               row.at("amount").get<unsigned>()<100 || row.at("amount").get<unsigned>()>900 || row.at("amount").get<unsigned>()%100 || !row.at("players").is_array())throw std::runtime_error("Invalid reward receipt");
+        }
+    }
+    plugin_rewards=std::move(rewards);
     players = std::move(loaded);wagers=std::move(ledger);next_wager_id=next;
     rebuild_headroom();
 }
 std::future<void> PlayerStatsStore::submit_save() const {
     if(!writer_)writer_=std::make_shared<SerialTasks>();
-    return writer_->submit([path=path_,snapshot=players,ledger=wagers,next=next_wager_id]{write_snapshot(path,snapshot,ledger,next);});
+    return writer_->submit([path=path_,snapshot=players,ledger=wagers,next=next_wager_id,rewards=plugin_rewards]{write_snapshot(path,snapshot,ledger,next,rewards);});
 }
 void PlayerStatsStore::save() const {
     // Durable economy barrier: never overtake a pending autosave or acknowledge failed writes.
@@ -159,10 +177,11 @@ bool PlayerStatsStore::poll_save() const {
     }
     return std::exchange(save_completed_,false);
 }
-void PlayerStatsStore::write_snapshot(const std::filesystem::path &path,const std::map<std::uint64_t,PlayerStats> &snapshot,const std::vector<Wager> &ledger,std::uint64_t next) {
+void PlayerStatsStore::write_snapshot(const std::filesystem::path &path,const std::map<std::uint64_t,PlayerStats> &snapshot,const std::vector<Wager> &ledger,std::uint64_t next,const Json& rewards) {
     if (path.empty()) return;
     auto root = Json::object(), list = Json::array();
-    root["version"] = 3;
+    root["version"] = 4;
+    root["plugin_rewards"]=rewards;
     root["next_wager_id"]=next;auto records=Json::array();
     for(const auto &w:ledger) {
         auto j=Json::object();j["id"]=w.id;j["creator_id"]=std::to_string(w.creator);j["stake"]=w.stake;
@@ -224,6 +243,30 @@ void PlayerStatsStore::calendar(PlayerStats &p, std::int64_t utc) {
 void PlayerStatsStore::credit(PlayerStats &p,std::uint64_t points) {
     p.points+=points; p.weekly_points+=points;
     p.wallet+=std::min(points,p.wallet_limit()-p.wallet);
+}
+
+Json PlayerStatsStore::skate_reward(std::string id,std::uint64_t winner,std::vector<std::uint64_t> roster,std::int64_t utc) {
+    if(path_.empty())throw std::runtime_error("MSC wallet persistence is not configured");
+    if(id.empty() || id.size()>200 || !std::ranges::all_of(id,[](unsigned char c){return (c>='a'&&c<='z') || (c>='A'&&c<='Z') || (c>='0'&&c<='9') || c==':' || c=='-' || c=='_' || c=='.';}))throw std::runtime_error("Invalid reward ID");
+    std::ranges::sort(roster);
+    if(roster.size()<2 || roster.size()>10 || std::adjacent_find(roster.begin(),roster.end())!=roster.end() || !std::ranges::binary_search(roster,winner))throw std::runtime_error("Invalid reward roster");
+    auto members=Json::array();for(auto player:roster) {
+        if(!players.contains(player))throw std::runtime_error("Reward participant is not in the MSC ledger");
+        members.push_back(std::to_string(player));
+    }
+    const auto amount=100U*static_cast<unsigned>(roster.size()-1);
+    if(plugin_rewards.contains(id)) {
+        const auto& prior=plugin_rewards.at(id);
+        if(prior.at("winner").get<std::string>()!=std::to_string(winner) || prior.at("amount").get<unsigned>()!=amount || prior.at("players").dump()!=members.dump())throw std::runtime_error("Reward ID conflict");
+        auto duplicate=prior;duplicate["duplicate"]=true;return duplicate;
+    }
+    if(plugin_rewards.size()>=10000)throw std::runtime_error("Reward receipt limit reached; operator review required");
+    auto& player=players.at(winner);const auto before=player;
+    if(amount>player.wallet_limit()-player.wallet || amount>max_stats_counter-player.points || amount>max_stats_counter-player.weekly_points)throw std::runtime_error("Reward exceeds ledger counter limit");
+    auto receipt=Json::object();receipt["status"]="paid";receipt["winner"]=std::to_string(winner);receipt["amount"]=amount;receipt["players"]=members;receipt["utc"]=utc;
+    calendar(player,utc);credit(player,amount);plugin_rewards[id]=receipt;
+    try { save(); } catch(const std::exception& e) { player=before;plugin_rewards.erase(id);throw std::runtime_error(std::string("MSC reward save failed: ")+e.what()); }
+    return receipt;
 }
 void PlayerStatsStore::joined(std::uint64_t id,std::string name,std::uint64_t now,std::int64_t utc) {
     auto &p=players[id]; p.name=std::move(name); calendar(p,utc);
